@@ -6,7 +6,7 @@ from utils.utils import should_quit
 
 class NBack:
     def __init__(self, win, nom, enregistrer, N=2, n_trials=30,
-                 isi=1.5, stim_dur=0.5, data_dir='data'):
+                 isi=1.5, stim_dur=0.5, data_dir='data/nback'):
         self.win = win
         self.nom = nom
         self.enregistrer = enregistrer
@@ -35,7 +35,7 @@ class NBack:
         event.waitKeys(keyList=None)
 
     def generate_sequence(self):
-        alpha = [chr(i) for i in range(65, 91)]  # Lettres A-Z
+        alpha = list('ABCDEHIKLMOPRST')  # 15 lettres uniquement
         seq = []
         for i in range(self.n_trials):
             if i >= self.N and random.random() < 0.3:

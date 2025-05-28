@@ -6,7 +6,7 @@ from utils.utils import should_quit
 
 class DigitSpan:
     def __init__(self, win, nom, enregistrer, span_length=5,
-                 n_trials=10, digit_dur=0.8, isi=0.5, data_dir='data'):
+                 n_trials=3, digit_dur=0.8, isi=0.5, data_dir='data/digitspan'):
         self.win = win
         self.nom = nom
         self.enregistrer = enregistrer

@@ -32,9 +32,9 @@ class Menu:
 
         # Paramètres spécifiques
         if tache == 'NBack':
-            config.update({'N': 2, 'n_trials': 30, 'isi': 1.5, 'stim_dur': 0.5})
+            config.update({'N': 2, 'n_trials': 15, 'isi': 2.0, 'stim_dur': 0.76})
         elif tache == 'DigitSpan':
-            config.update({'span_length': 5, 'n_trials': 10, 'digit_dur': 0.8, 'isi': 0.5})
+            config.update({'span_length': 5, 'n_trials': 3, 'digit_dur': 0.8, 'isi': 0.5})
         elif tache == 'Flanker':
             config.update({'n_trials': 20, 'stim_dur': 1, 'isi': 1.0})
 

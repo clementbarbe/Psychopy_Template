@@ -6,7 +6,7 @@ from utils.utils import should_quit
 
 class Flanker:
     def __init__(self, win, nom, enregistrer, n_trials=10,
-                 stim_dur=1, isi=1.0, data_dir='data'):
+                 stim_dur=1, isi=1.0, data_dir='data/flanker'):
         self.win = win
         self.nom = nom
         self.enregistrer = enregistrer
@@ -17,7 +17,7 @@ class Flanker:
         os.makedirs(self.data_dir, exist_ok=True)
 
         self.results = []
-        self.text_stim = visual.TextStim(self.win, height=0.1, color='white')
+        self.text_stim = visual.TextStim(self.win, height=0.07, color='white')
         self.trial_clock = core.Clock()  # <- Ajout d'une clock pour mesurer le RT
 
     def show_instructions(self):
