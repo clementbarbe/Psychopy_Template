@@ -6,10 +6,12 @@ from tasks.flanker import Flanker
 
 
 def main():
-    config = Menu().show()
-    if config is None:
-        print("Configuration annulée.")
-        return
+    menu = Menu()
+    config = menu.show()
+    if config:
+        print("Configuration validée:", config)
+    else:
+        print("Configuration annulée")
 
     win = visual.Window(
         size=config['window_size'],

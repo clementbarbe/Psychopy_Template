@@ -66,39 +66,63 @@ class DigitSpan:
         self.show_instructions()
 
         for trial in range(self.n_trials):
-            should_quit(self.win)
+            if should_quit(self.win):
+                return None  # Quitter si 'q' est pressé
 
             seq = self.generate_sequence()
 
-            # Affichage séquentiel
+            # Affichage séquentiel avec vérification continue
             for digit in seq:
                 self.text_stim.text = digit
                 self.text_stim.draw()
                 self.win.flip()
-                core.wait(self.digit_dur)
+                
+                # Vérifier 'q' pendant l'affichage du chiffre
+                start_time = core.getTime()
+                while core.getTime() - start_time < self.digit_dur:
+                    if should_quit(self.win):
+                        return None
+                    core.wait(0.01)  # Petite pause pour éviter de surcharger le CPU
 
-                # ISI
-                self.text_stim.text = ''
-                self.text_stim.draw()
-                self.win.flip()
-                core.wait(self.isi)
+            # ISI avec vérification
+            self.text_stim.text = ''
+            self.text_stim.draw()
+            self.win.flip()
+            
+            start_time = core.getTime()
+            while core.getTime() - start_time < self.isi:
+                if should_quit(self.win):
+                    return None
+                core.wait(0.01)
 
-            # Demander la réponse
+            # Demander la réponse avec vérification
             self.text_stim.text = "Tapez la séquence, puis Entrée"
             self.text_stim.draw()
             self.win.flip()
-            core.wait(1)
-            response = self.get_response()
+            
+            start_time = core.getTime()
+            while core.getTime() - start_time < 1:  # Attente avant saisie
+                if should_quit(self.win):
+                    return None
+                core.wait(0.01)
+            
+            response = self.get_response_with_quit()  # Nouvelle méthode pour gérer 'q' pendant la saisie
 
-            # Confirmation visuelle de la réponse après saisie
+            if response is None:  # Si 'q' a été pressé pendant la saisie
+                return None
+
+            # Confirmation visuelle avec vérification
             self.text_stim.text = f"Votre réponse : {response}"
             self.text_stim.draw()
             self.win.flip()
-            core.wait(1.5)  # Pause pour laisser le temps de voir
-
+            
+            start_time = core.getTime()
+            while core.getTime() - start_time < 1.5:
+                if should_quit(self.win):
+                    return None
+                core.wait(0.01)
 
             accurate = (response == ''.join(seq))
-
             self.results.append({
                 'trial': trial + 1,
                 'sequence': ''.join(seq),
@@ -109,6 +133,26 @@ class DigitSpan:
 
         self.print_results_summary()
         return self.results
+
+def get_response_with_quit(self):
+    """Version modifiée de get_response() qui vérifie 'q' pendant la saisie"""
+    response = []
+    event.clearEvents()  # Effacer le buffer d'événements
+    
+    while True:
+        for key in event.getKeys():
+            if key == 'q':
+                return None
+            elif key == 'return':
+                return ''.join(response)
+            elif key in '0123456789':
+                response.append(key)
+                # Feedback visuel immédiat
+                self.text_stim.text = f"Tapez la séquence, puis Entrée\n{'*' * len(response)}"
+                self.text_stim.draw()
+                self.win.flip()
+        
+        core.wait(0.01)  # Petite pause pour éviter de surcharger le CPU
 
     def print_results_summary(self):
         print("\n--- Résultats de la tâche Digit Span ---")
