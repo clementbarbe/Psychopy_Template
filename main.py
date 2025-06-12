@@ -1,18 +1,10 @@
+# main.py
 from psychopy import visual, core
 from gui.menu import Menu
-from tasks.nback import NBack
-from tasks.digitspan import DigitSpan
-from tasks.flanker import Flanker
+from utils.task_factory import create_task
 
-
-def main():
-    menu = Menu()
-    config = menu.show()
-    if config:
-        print("Configuration validée:", config)
-    else:
-        print("Configuration annulée")
-
+def run_task(config):
+    """Exécute une tâche basée sur la configuration"""
     win = visual.Window(
         size=config['window_size'],
         fullscr=config['fullscr'],
@@ -20,59 +12,24 @@ def main():
         units='norm'
     )
 
-    task_name = config['tache']
+    task = create_task(config, win)
+    if task:
+        results = task.run()
+        if hasattr(task, 'save_results'):
+            task.save_results()
 
-    # Arguments communs
-    base_kwargs = {
-        'win': win,
-        'nom': config['nom'],
-        'enregistrer': config['enregistrer']
-    }
+    win.close()
 
-    if task_name == 'NBack':
-        task = NBack(
-            **base_kwargs,
-            N=config['N'],
-            n_trials=config['n_trials'],
-            isi=config['isi'],
-            stim_dur=config['stim_dur']
-        )
+def main():
+    while True:
+        menu = Menu()
+        config = menu.show()
+        if not config:
+            print("Configuration annulée")
+            break
 
-    elif task_name == 'DigitSpan':
-        task = DigitSpan(
-            **base_kwargs,
-            span_length=config['span_length'],
-            n_trials=config['n_trials'],
-            digit_dur=config['digit_dur'],
-            isi=config['isi']
-        )
-
-    elif task_name == 'Flanker':
-        task = Flanker(
-            **base_kwargs,
-            n_trials=config['n_trials'],
-            stim_dur=config['stim_dur'],
-            isi=config['isi']
-        )
-
-    else:
-        print("Tâche inconnue.")
-        return
-
-    results = task.run()
-    if hasattr(task, 'save_results'):
-        task.save_results()
-
-    # Rejouer ?
-    menu_final = Menu()
-    choix = menu_final.show()
-    if choix:
-        win.close()
-        main()
-    else:
-        win.close()
-        core.quit()
-
+        print("Configuration validée:", config)
+        run_task(config)
 
 if __name__ == '__main__':
     main()

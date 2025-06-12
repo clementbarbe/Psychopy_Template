@@ -5,76 +5,75 @@ from PyQt6.QtCore import Qt
 from utils.utils import is_valid_name
 import sys
 
-
 class ExperimentMenu(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Configuration Expérimentale")
         self.setFixedSize(800, 600)
-        
+
         self.config = {
             'nom': '',
             'enregistrer': True,
             'window_size': (1500, 1500),
             'fullscr': False
         }
-        
+
         self.initUI()
-        
+
     def initUI(self):
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout()
         main_widget.setLayout(main_layout)
-        
+
         # Partie supérieure - Configuration générale (toujours visible)
         self.create_general_section(main_layout)
-        
+
         # Partie centrale - Onglets des tâches avec boutons Run
         self.create_task_tabs(main_layout)
-        
+
     def create_general_section(self, parent_layout):
         group = QGroupBox("Configuration Générale")
         layout = QHBoxLayout()
-        
+
         # Nom participant
         lbl_name = QLabel("Nom du participant:")
         self.txt_name = QLineEdit()
         self.txt_name.setFixedWidth(200)
-        
+
         # Options générales
         self.chk_save = QCheckBox("Enregistrer les données")
         self.chk_save.setChecked(True)
-        
+
         layout.addWidget(lbl_name)
         layout.addWidget(self.txt_name)
         layout.addWidget(self.chk_save)
         layout.addStretch()
-        
+
         group.setLayout(layout)
         parent_layout.addWidget(group)
-    
+
     def create_task_tabs(self, parent_layout):
         """Crée les onglets avec leurs propres boutons Run"""
         self.tabs = QTabWidget()
-        
+
         # Onglet NBack
         self.nback_tab = QWidget()
         self.init_nback_tab()
         self.tabs.addTab(self.nback_tab, "NBack")
-        
+
         # Onglet DigitSpan
         self.digit_tab = QWidget()
         self.init_digitspan_tab()
         self.tabs.addTab(self.digit_tab, "DigitSpan")
-        
+
         # Onglet Flanker
         self.flanker_tab = QWidget()
         self.init_flanker_tab()
         self.tabs.addTab(self.flanker_tab, "Flanker")
-        
+
         parent_layout.addWidget(self.tabs)
-    
+
     def init_nback_tab(self):
         layout = QVBoxLayout()
         self.nback_tab.setLayout(layout)
@@ -96,7 +95,7 @@ class ExperimentMenu(QMainWindow):
         lbl_trials = QLabel("Nombre d'essais:")
         self.spin_nback_trials = QSpinBox()
         self.spin_nback_trials.setRange(1, 100)
-        self.spin_nback_trials.setValue(15)
+        self.spin_nback_trials.setValue(10)
         trials_layout.addWidget(lbl_trials)
         trials_layout.addWidget(self.spin_nback_trials)
 
@@ -105,12 +104,12 @@ class ExperimentMenu(QMainWindow):
         lbl_isi = QLabel("ISI (s):")
         self.spin_nback_isi = QDoubleSpinBox()
         self.spin_nback_isi.setSingleStep(0.1)
-        self.spin_nback_isi.setValue(2.0)
+        self.spin_nback_isi.setValue(0.5)
 
         lbl_dur = QLabel("Durée stimulus (s):")
         self.spin_nback_dur = QDoubleSpinBox()
         self.spin_nback_dur.setSingleStep(0.01)
-        self.spin_nback_dur.setValue(0.76)
+        self.spin_nback_dur.setValue(1.5)
 
         dur_layout.addWidget(lbl_isi)
         dur_layout.addWidget(self.spin_nback_isi)
@@ -129,7 +128,6 @@ class ExperimentMenu(QMainWindow):
         layout.addStretch()
         layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
 
-    
     def init_digitspan_tab(self):
         # Utilisez un QVBoxLayout principal pour l'onglet
         layout = QVBoxLayout()
@@ -186,7 +184,7 @@ class ExperimentMenu(QMainWindow):
         layout.addWidget(params_group)
         layout.addStretch()
         layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
-    
+
     def init_flanker_tab(self):
         layout = QVBoxLayout()
         self.flanker_tab.setLayout(layout)
@@ -229,22 +227,21 @@ class ExperimentMenu(QMainWindow):
         layout.addStretch()
         layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
 
-    
     def validate_config(self):
         """Valide la configuration générale"""
         self.config['nom'] = self.txt_name.text().strip()
         self.config['enregistrer'] = self.chk_save.isChecked()
-        
+
         if not is_valid_name(self.config['nom']):
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Erreur", "Nom invalide")
             return False
         return True
-    
+
     def run_nback(self):
         if not self.validate_config():
             return
-            
+
         self.config.update({
             'tache': 'NBack',
             'N': self.spin_n.value(),
@@ -252,12 +249,13 @@ class ExperimentMenu(QMainWindow):
             'isi': self.spin_nback_isi.value(),
             'stim_dur': self.spin_nback_dur.value()
         })
-        self.launch_experiment()
-    
+        self.close()
+        QApplication.quit()
+
     def run_digitspan(self):
         if not self.validate_config():
             return
-            
+
         self.config.update({
             'tache': 'DigitSpan',
             'span_length': self.spin_span.value(),
@@ -265,25 +263,22 @@ class ExperimentMenu(QMainWindow):
             'digit_dur': self.spin_digit_dur.value(),
             'isi': self.spin_digit_isi.value()
         })
-        self.launch_experiment()
-    
+        self.close()
+        QApplication.quit()
+
     def run_flanker(self):
         if not self.validate_config():
             return
-            
+
         self.config.update({
             'tache': 'Flanker',
             'n_trials': self.spin_flanker_trials.value(),
             'stim_dur': self.spin_flanker_dur.value(),
             'isi': self.spin_flanker_isi.value()
         })
-        self.launch_experiment()
-    
-    def launch_experiment(self):
-        """Ferme la fenêtre et retourne la configuration"""
         self.close()
-        QApplication.exit(0)
-    
+        QApplication.quit()
+
     def get_config(self):
         return self.config
 
@@ -294,7 +289,6 @@ def show_qt_menu():
     app.exec()
     return menu.get_config()
 
-# Version compatible avec votre code existant
 class Menu:
     def show(self):
         config = show_qt_menu()

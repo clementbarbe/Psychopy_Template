@@ -41,12 +41,13 @@ class DigitSpan:
         self.text_stim.text = ''
         self.text_stim.draw()
         self.win.flip()
-
+        event.clearEvents()  # vide le buffer des touches
+        
         while True:
             keys = event.getKeys()
             for key in keys:
-                if key == 'escape':
-                    should_quit(self.win)
+                if key in ['escape', 'q']:
+                    should_quit()
                 elif key in ['return', 'num_enter']:
                     return response
                 elif key == 'backspace':
@@ -60,6 +61,33 @@ class DigitSpan:
                 self.text_stim.text = response
                 self.text_stim.draw()
                 self.win.flip()
+
+
+
+    def print_results_summary(self):
+        print("\n--- Résultats de la tâche Digit Span ---")
+        n_correct = sum(r['accurate'] for r in self.results)
+        n_trials = len(self.results)
+        print(f"Réponses correctes : {n_correct} / {n_trials} ({100*n_correct/n_trials:.1f}%)")
+        print("\nDétail par essai :")
+        for r in self.results:
+            print(f"Essai {r['trial']:2d} | Séquence: {r['sequence']} | "
+                    f"Réponse: {r['response']} | Correct: {r['accurate']}")
+
+    def save_results(self):
+        if not self.enregistrer:
+            return
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        fname = f"{self.nom}_DigitSpan_{ts}.csv"
+        path = os.path.join(self.data_dir, fname)
+        with open(path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=[
+                'participant', 'date', 'trial', 'sequence', 'response', 'accurate', 'length'
+            ])
+            writer.writeheader()
+            for row in self.results:
+                writer.writerow({**row, 'participant': self.nom, 'date': ts})
+        print(f"Données sauvegardées : {path}")
 
 
     def run(self):
@@ -106,7 +134,7 @@ class DigitSpan:
                     return None
                 core.wait(0.01)
             
-            response = self.get_response_with_quit()  # Nouvelle méthode pour gérer 'q' pendant la saisie
+            response = self.get_response()  # Nouvelle méthode pour gérer 'q' pendant la saisie
 
             if response is None:  # Si 'q' a été pressé pendant la saisie
                 return None
@@ -134,47 +162,4 @@ class DigitSpan:
         self.print_results_summary()
         return self.results
 
-def get_response_with_quit(self):
-    """Version modifiée de get_response() qui vérifie 'q' pendant la saisie"""
-    response = []
-    event.clearEvents()  # Effacer le buffer d'événements
-    
-    while True:
-        for key in event.getKeys():
-            if key == 'q':
-                return None
-            elif key == 'return':
-                return ''.join(response)
-            elif key in '0123456789':
-                response.append(key)
-                # Feedback visuel immédiat
-                self.text_stim.text = f"Tapez la séquence, puis Entrée\n{'*' * len(response)}"
-                self.text_stim.draw()
-                self.win.flip()
-        
-        core.wait(0.01)  # Petite pause pour éviter de surcharger le CPU
 
-    def print_results_summary(self):
-        print("\n--- Résultats de la tâche Digit Span ---")
-        n_correct = sum(r['accurate'] for r in self.results)
-        n_trials = len(self.results)
-        print(f"Réponses correctes : {n_correct} / {n_trials} ({100*n_correct/n_trials:.1f}%)")
-        print("\nDétail par essai :")
-        for r in self.results:
-            print(f"Essai {r['trial']:2d} | Séquence: {r['sequence']} | "
-                  f"Réponse: {r['response']} | Correct: {r['accurate']}")
-
-    def save_results(self):
-        if not self.enregistrer:
-            return
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        fname = f"{self.nom}_DigitSpan_{ts}.csv"
-        path = os.path.join(self.data_dir, fname)
-        with open(path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=[
-                'participant', 'date', 'trial', 'sequence', 'response', 'accurate', 'length'
-            ])
-            writer.writeheader()
-            for row in self.results:
-                writer.writerow({**row, 'participant': self.nom, 'date': ts})
-        print(f"Données sauvegardées : {path}")
