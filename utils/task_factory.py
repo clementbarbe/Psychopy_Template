@@ -1,6 +1,7 @@
 from tasks.nback import NBack
 from tasks.digitspan import DigitSpan
 from tasks.flanker import Flanker
+from tasks.stroop import Stroop
 
 def create_task(config, win):
     base_kwargs = {
@@ -34,6 +35,14 @@ def create_task(config, win):
             stim_dur=config['stim_dur'],
             isi=config['isi']
         )
+    
+    if task_config == 'Stroop':
+        return Stroop(
+            **base_kwargs,
+            n_trials=config['n_trials'],
+            isi=config['isi'],
+            stim_dur=config['stim_dur']
+        )   
     else:
         print("Tâche inconnue.")
         return None

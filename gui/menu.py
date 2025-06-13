@@ -72,6 +72,11 @@ class ExperimentMenu(QMainWindow):
         self.init_flanker_tab()
         self.tabs.addTab(self.flanker_tab, "Flanker")
 
+        # Onglet Stroop
+        self.stroop_tab = QWidget()
+        self.init_stroop_tab()
+        self.tabs.addTab(self.stroop_tab, "Stroop")
+
         parent_layout.addWidget(self.tabs)
 
     def init_nback_tab(self):
@@ -227,6 +232,64 @@ class ExperimentMenu(QMainWindow):
         layout.addStretch()
         layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
 
+    def init_stroop_tab(self):
+        # Création de l'onglet Stroop
+        layout = QVBoxLayout()
+        self.stroop_tab = QWidget()
+        self.stroop_tab.setLayout(layout)
+
+        # — Groupe Paramètres Stroop —
+        params_group = QGroupBox("Paramètres Stroop")
+        params_layout = QVBoxLayout()
+
+        # Nombre d'essais Stroop
+        trials_layout = QHBoxLayout()
+        lbl_trials = QLabel("Nombre d'essais :")
+        self.spin_stroop_trials = QSpinBox()
+        self.spin_stroop_trials.setRange(1, 500)      # jusqu'à 500 essais si besoin
+        self.spin_stroop_trials.setValue(30)        # valeur par défaut
+        trials_layout.addWidget(lbl_trials)
+        trials_layout.addWidget(self.spin_stroop_trials)
+
+        # Durée du stimulus Stroop
+        dur_layout = QHBoxLayout()
+        lbl_dur = QLabel("Durée stimulus (s) :")
+        self.spin_stroop_dur = QDoubleSpinBox()
+        self.spin_stroop_dur.setRange(0.1, 5.0)      # entre 100 ms et 5 s
+        self.spin_stroop_dur.setSingleStep(0.1)
+        self.spin_stroop_dur.setDecimals(2)
+        self.spin_stroop_dur.setValue(1.5)           # valeur par défaut
+        dur_layout.addWidget(lbl_dur)
+        dur_layout.addWidget(self.spin_stroop_dur)
+
+        # ISI Stroop
+        lbl_isi = QLabel("ISI (s) :")
+        self.spin_stroop_isi = QDoubleSpinBox()
+        self.spin_stroop_isi.setRange(0.1, 5.0)
+        self.spin_stroop_isi.setSingleStep(0.1)
+        self.spin_stroop_isi.setDecimals(2)
+        self.spin_stroop_isi.setValue(1.0)
+        dur_layout.addWidget(lbl_isi)
+        dur_layout.addWidget(self.spin_stroop_isi)
+
+        # Assemblage des paramètres
+        params_layout.addLayout(trials_layout)
+        params_layout.addLayout(dur_layout)
+        params_group.setLayout(params_layout)
+
+        # — Bouton de lancement —
+        btn_run = QPushButton("Lancer Stroop")
+        btn_run.clicked.connect(self.run_stroop)
+
+        # Ajout dans le layout principal
+        layout.addWidget(params_group)
+        layout.addStretch()  # pousse le bouton en bas
+        layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
+
+        # Retourne l'onglet pour que tu puisses l'ajouter à ton QTabWidget
+        return self.stroop_tab
+
+
     def validate_config(self):
         """Valide la configuration générale"""
         self.config['nom'] = self.txt_name.text().strip()
@@ -272,6 +335,19 @@ class ExperimentMenu(QMainWindow):
 
         self.config.update({
             'tache': 'Flanker',
+            'n_trials': self.spin_flanker_trials.value(),
+            'stim_dur': self.spin_flanker_dur.value(),
+            'isi': self.spin_flanker_isi.value()
+        })
+        self.close()
+        QApplication.quit()
+
+    def run_stroop(self):
+        if not self.validate_config():
+            return
+
+        self.config.update({
+            'tache': 'Stroop',
             'n_trials': self.spin_flanker_trials.value(),
             'stim_dur': self.spin_flanker_dur.value(),
             'isi': self.spin_flanker_isi.value()
