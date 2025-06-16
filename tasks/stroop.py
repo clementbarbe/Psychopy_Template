@@ -6,7 +6,7 @@ from datetime import datetime
 from utils.utils import should_quit
 
 class Stroop:
-    def __init__(self, win, nom, enregistrer=True, n_trials=100,
+    def __init__(self, win, nom, enregistrer=True, n_trials=30,
                  stim_dur=1.5, isi=1.0, data_dir='data/stroop_two_keys'):
         """
         Initialise la tâche Stroop avec deux touches.
@@ -31,7 +31,7 @@ class Stroop:
         self.colors = ['red', 'green', 'blue', 'yellow']
         self.words = ['ROUGE', 'VERT', 'BLEU', 'JAUNE']
         # Mapping touche: couleur
-        self.key_mapping = {'a': 'red', 'b': 'blue'}
+        self.key_mapping = {'r': 'red', 'b': 'blue'}
 
         self.results = []
         self.text_stim = visual.TextStim(self.win, height=0.1, color='white')
