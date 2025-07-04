@@ -33,6 +33,18 @@ class DigitSpan:
         self.win.flip()
         event.waitKeys()
 
+    def wait_for_trigger(self, trigger_key='t'):
+        """Affiche un message et attend le trigger scanner."""
+        self.text_stim.text = (
+            f"En attente du trigger scanner ('{trigger_key}')\n"
+            "Appuyez sur 'escape' pour quitter."
+        )
+        self.text_stim.draw()
+        self.win.flip()
+        keys = event.waitKeys(keyList=[trigger_key, 'escape'])
+        if 'escape' in keys:
+            should_quit(self.win, quit=True)
+
     def generate_sequence(self):
         return [str(random.randint(0, 9)) for _ in range(self.span_length)]
 
@@ -92,6 +104,9 @@ class DigitSpan:
 
     def run(self):
         self.show_instructions()
+
+        # Attente du trigger scanner avant de démarrer la tâche
+        self.wait_for_trigger(trigger_key='t')
 
         for trial in range(self.n_trials):
             if should_quit(self.win):

@@ -54,6 +54,18 @@ class Stroop:
         self.win.flip()
         event.waitKeys()
 
+    def wait_for_trigger(self, trigger_key='t'):
+        """Affiche un message et attend le trigger scanner."""
+        self.text_stim.text = (
+            f"En attente du trigger scanner ('{trigger_key}')\n"
+            "Appuyez sur 'escape' pour quitter."
+        )
+        self.text_stim.draw()
+        self.win.flip()
+        keys = event.waitKeys(keyList=[trigger_key, 'escape'])
+        if 'escape' in keys:
+            should_quit(self.win, quit=True)
+
     def generate_trial(self):
         # Choix aléatoire: mot et couleur
         word = random.choice(self.words)
@@ -74,6 +86,9 @@ class Stroop:
     def run(self):
         self.show_instructions()
         random.seed()  # vrai hasard
+
+        # Attente du trigger scanner avant de démarrer la tâche
+        self.wait_for_trigger(trigger_key='t')
 
         for trial in range(1, self.n_trials + 1):
             should_quit(self.win)
