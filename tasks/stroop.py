@@ -42,7 +42,7 @@ class Stroop:
             "Tâche Stroop\n\n"
             "Vous verrez un mot désignant une couleur écrit dans une couleur d'encre.\n"
             "Votre tâche est d'indiquer la couleur de l'encre en utilisant les touches suivantes :\n"
-            "Touche 'A' pour la couleur ROUGE\n"
+            "Touche 'R' pour la couleur ROUGE\n"
             "Touche 'B' pour la couleur BLEUE\n"
             "Ne répondez pas pour les autres couleurs.\n"
             "Appuyez sur n'importe quelle touche pour commencer."
