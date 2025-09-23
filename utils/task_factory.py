@@ -2,6 +2,7 @@ from tasks.nback import NBack
 from tasks.digitspan import DigitSpan
 from tasks.flanker import Flanker
 from tasks.stroop import Stroop
+from tasks.visualmemory import VisualMemory
 
 def create_task(config, win):
     base_kwargs = {
@@ -40,6 +41,12 @@ def create_task(config, win):
             n_trials=config['n_trials'],
             isi=config['isi'],
             stim_dur=config['stim_dur']
+        )   
+    
+    if task_config == 'VisualMemory':
+        return VisualMemory(
+            **base_kwargs,  
+            
         )   
     
     else:

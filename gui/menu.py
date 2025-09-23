@@ -77,6 +77,11 @@ class ExperimentMenu(QMainWindow):
         self.init_stroop_tab()
         self.tabs.addTab(self.stroop_tab, "Stroop")
 
+        # Onglet Visual Memory
+        self.visualmemory_tab = QWidget()
+        self.init_visualmemory_tab()
+        self.tabs.addTab(self.visualmemory_tab, "Visual Memory")
+
         parent_layout.addWidget(self.tabs)
 
     def init_nback_tab(self):
@@ -267,6 +272,38 @@ class ExperimentMenu(QMainWindow):
 
         # Retourne l'onglet pour que tu puisses l'ajouter à ton QTabWidget
         return self.stroop_tab
+    
+    def init_visualmemory_tab(self):
+        layout = QVBoxLayout()
+        self.visualmemory_tab.setLayout(layout)
+
+        params_group = QGroupBox("Paramètres Visual Memory")
+        params_layout = QVBoxLayout()
+
+        # Durées
+        dur_layout = QVBoxLayout()
+        lbl_visual_dur = QLabel("Durée stimulus (s):")
+        self.spin_visual_dur = QDoubleSpinBox()
+        self.spin_visual_dur.setValue(1.0)
+
+        lbl_visual_isi = QLabel("ISI (s):")
+        self.spin_visual_isi = QDoubleSpinBox()
+        self.spin_visual_isi.setValue(0.5)
+
+        dur_layout.addWidget(lbl_visual_dur)
+        dur_layout.addWidget(self.spin_visual_dur)
+        dur_layout.addWidget(lbl_visual_isi)
+        dur_layout.addWidget(self.spin_visual_isi)
+
+        params_layout.addLayout(dur_layout)
+        params_group.setLayout(params_layout)
+
+        btn_run = QPushButton("Lancer Visual Memory")
+        btn_run.clicked.connect(self.run_visualmemory)
+
+        layout.addWidget(params_group)
+        layout.addStretch()
+        layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
 
     def validate_config(self):
         """Valide la configuration générale"""
@@ -324,12 +361,25 @@ class ExperimentMenu(QMainWindow):
 
         self.config.update({
             'tache': 'Stroop',
-            'n_trials': self.spin_flanker_trials.value(),
-            'stim_dur': self.spin_flanker_dur.value(),
-            'isi': self.spin_flanker_isi.value()
+            'n_trials': self.spin_stroop_trials.value(),
+            'stim_dur': self.spin_stroop_dur.value(),
+            'isi': self.spin_stroop_isi.value()
         })
         self.close()
         QApplication.quit()
+
+    def run_visualmemory(self):
+        if not self.validate_config():
+            return
+
+        self.config.update({
+            'tache': 'VisualMemory',
+            'stim_dur': self.spin_visual_dur.value(),
+            'isi': self.spin_visual_isi.value()
+        })
+        self.close()
+        QApplication.quit()
+
 
     def get_config(self):
         return self.config

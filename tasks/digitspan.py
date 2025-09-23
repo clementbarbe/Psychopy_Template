@@ -166,7 +166,7 @@ class DigitSpan:
         # Pause courte avant saisie
         self.text_stim.text = "Cliquez sur les chiffres, puis 'Entrée'"
         self.draw_all()
-        core.wait(0.3)
+        core.wait(0.8)
 
         response = self.get_response()
         if response is None:
@@ -177,7 +177,7 @@ class DigitSpan:
         self.text_stim.color = 'green' if accurate else 'red'
         self.text_stim.text = f"Votre réponse : {response}"
         self.draw_all()
-        core.wait(3)
+        core.wait(2)
         self.text_stim.color = 'white'  # remettre couleur par défaut pour essai suivant
 
         # Enregistrement du résultat
