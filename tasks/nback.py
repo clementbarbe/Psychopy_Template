@@ -6,9 +6,10 @@ from utils.utils import should_quit
 
 class NBack:
     def __init__(self, win, nom, enregistrer, N=2, n_trials=30,
-                 isi=1.5, stim_dur=0.5, data_dir='data/nback'):
+                 isi=1.5, stim_dur=0.5, screenid=1, data_dir='data/nback'):
         self.win = win
         self.nom = nom
+        self.screenid = screenid
         self.enregistrer = enregistrer
         self.N = N
         self.n_trials = n_trials

@@ -10,7 +10,8 @@ def run_task(config):
         size=config['window_size'],
         fullscr=config['fullscr'],
         color='black',
-        units='norm'
+        units='norm',
+        screen = config['screenid']
     )
 
     # Exécution de la tâche

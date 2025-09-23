@@ -4,10 +4,11 @@ from datetime import datetime
 from utils.utils import should_quit
 
 class DigitSpan:
-    def __init__(self, win, nom, enregistrer, digit_dur=0.8, isi=0.5, data_dir='data/digitspan'):
+    def __init__(self, win, nom, enregistrer, screenid = 1, digit_dur=0.8, isi=0.5, data_dir='data/digitspan'):
         self.win = win
         self.nom = nom
         self.enregistrer = enregistrer
+        self.screenid = screenid
         self.digit_dur = digit_dur
         self.isi = isi
         self.data_dir = data_dir

@@ -3,9 +3,10 @@ import random, csv, os
 from datetime import datetime
 
 class VisualMemory:
-    def __init__(self, win, nom, enregistrer=True, data_dir="data/visualmemory"):
+    def __init__(self, win, nom, enregistrer=True, screenid=1, data_dir="data/visualmemory"):
         self.win = win
         self.nom = nom
+        self;screenid = screenid
         self.enregistrer = enregistrer
         self.data_dir = data_dir
         os.makedirs(self.data_dir, exist_ok=True)

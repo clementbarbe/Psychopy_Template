@@ -8,7 +8,8 @@ def create_task(config, win):
     base_kwargs = {
         'win': win,
         'nom': config['nom'],
-        'enregistrer': config['enregistrer']
+        'enregistrer': config['enregistrer'],
+        'screenid': config['screenid']
     }
 
     task_config = config['tache']

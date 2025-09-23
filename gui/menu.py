@@ -14,8 +14,9 @@ class ExperimentMenu(QMainWindow):
         self.config = {
             'nom': '',
             'enregistrer': True,
-            'window_size': (1500, 1500),
-            'fullscr': True
+            'window_size': (2000, 2000),
+            'fullscr': True,
+            'screenid': 1
         }
 
         self.initUI()
@@ -44,10 +45,22 @@ class ExperimentMenu(QMainWindow):
         # Options générales
         self.chk_save = QCheckBox("Enregistrer les données")
         self.chk_save.setChecked(True)
+        
+        # Choix de l'écran
+        lbl_screen = QLabel("Écran:")
+        self.screenid = QSpinBox()
+        self.screenid.setRange(0, QApplication.screens().__len__() - 1)  # index en fonction du nb d'écrans
+        self.screenid.setValue(1)  # par défaut le premier écran
+
+        
+
 
         layout.addWidget(lbl_name)
         layout.addWidget(self.txt_name)
         layout.addWidget(self.chk_save)
+        layout.addWidget(lbl_screen)
+        layout.addWidget(self.screenid)
+        
         layout.addStretch()
 
         group.setLayout(layout)
@@ -309,6 +322,7 @@ class ExperimentMenu(QMainWindow):
         """Valide la configuration générale"""
         self.config['nom'] = self.txt_name.text().strip()
         self.config['enregistrer'] = self.chk_save.isChecked()
+        self.config['screenid'] = self.screenid.value()
 
         if not is_valid_name(self.config['nom']):
             from PyQt6.QtWidgets import QMessageBox

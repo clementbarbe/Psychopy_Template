@@ -6,11 +6,12 @@ from datetime import datetime
 from utils.utils import should_quit
 
 class Stroop:
-    def __init__(self, win, nom, enregistrer=True, n_trials=30,
+    def __init__(self, win, nom, enregistrer=True, screenid = 1, n_trials=30,
                  stim_dur=1.5, isi=1.0, data_dir='data/stroop_two_keys'):
         self.win = win
         self.nom = nom
         self.enregistrer = enregistrer
+        self;screenid = screenid
         self.n_trials = n_trials
         self.stim_dur = stim_dur
         self.isi = isi
