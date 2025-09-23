@@ -90,12 +90,12 @@ class Flanker:
                     break
                 core.wait(0.005)  # plus fin pour un meilleur timing
 
-            # Effacer l’écran (ne laisse pas le stimulus pendant l’ISI)
+            # Effacer l’écran
             self.win.flip()
 
             accurate = (resp == target_dir)
 
-            self.results.append({
+            trial_result = {
                 'trial': trial,
                 'stimulus': stim_str,
                 'target_direction': target_dir,
@@ -103,13 +103,18 @@ class Flanker:
                 'response': resp if resp is not None else 'none',
                 'accurate': accurate,
                 'RT': rt
-            })
+            }
+
+            self.results.append(trial_result)
+
+            # 🔎 DEBUG temps réel : affichage direct après chaque essai
+            print(f" Trial {trial:2d} | Stimulus: {stim_str} | "
+                f"Congruent: {congruent} | Cible: {target_dir} | "
+                f"Réponse: {resp if resp is not None else 'none'} | "
+                f"Correct: {accurate} | RT: {rt if rt is not None else 'N/A'}", flush = True)
 
             # Pause inter-essai stricte
             core.wait(self.isi)
-
-        self.print_results_summary()
-        return self.results
 
 
     def print_results_summary(self):

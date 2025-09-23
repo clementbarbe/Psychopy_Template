@@ -8,16 +8,6 @@ from utils.utils import should_quit
 class Stroop:
     def __init__(self, win, nom, enregistrer=True, n_trials=30,
                  stim_dur=1.5, isi=1.0, data_dir='data/stroop_two_keys'):
-        """
-        Initialise la tâche Stroop avec deux touches.
-        :param win: PsychoPy Window
-        :param nom: identifiant du participant
-        :param enregistrer: sauvegarder les données si True
-        :param n_trials: nombre d'essais
-        :param stim_dur: durée d'affichage du stimulus (s)
-        :param isi: intervalle inter-stimulus (s)
-        :param data_dir: dossier de sauvegarde
-        """
         self.win = win
         self.nom = nom
         self.enregistrer = enregistrer
@@ -67,25 +57,22 @@ class Stroop:
             should_quit(self.win, quit=True)
 
     def generate_trial(self):
-        # Choix aléatoire: mot et couleur
         word = random.choice(self.words)
         ink_color = random.choice(self.colors)
         congruent = (word.lower() == self.color_to_word(ink_color))
         return word, ink_color, congruent
 
     def color_to_word(self, color):
-        # Mapper la couleur en mot français
-        color_to_word_map = {
+        return {
             'red': 'rouge',
             'green': 'vert',
             'blue': 'bleu',
             'yellow': 'jaune'
-        }
-        return color_to_word_map.get(color, '')
+        }.get(color, '')
 
     def run(self):
         self.show_instructions()
-        random.seed()  # vrai hasard
+        random.seed()
 
         # Attente du trigger scanner avant de démarrer la tâche
         self.wait_for_trigger(trigger_key='t')
@@ -94,16 +81,17 @@ class Stroop:
             should_quit(self.win)
 
             word, ink_color, congruent = self.generate_trial()
-            # Configurer le stimulus
+
+            # Afficher le stimulus
             self.text_stim.text = word
             self.text_stim.color = ink_color
             self.text_stim.draw()
             self.win.flip()
 
-            # Enregistrer la réponse
             self.trial_clock.reset()
             resp = None
             rt = None
+
             while self.trial_clock.getTime() < self.stim_dur:
                 keys = event.getKeys(keyList=list(self.key_mapping.keys()) + ['escape'],
                                      timeStamped=self.trial_clock)
@@ -116,15 +104,13 @@ class Stroop:
                     break
                 core.wait(0.005)
 
-            # Clear screen for ISI
+            # Clear screen
             self.win.flip()
             core.wait(self.isi)
 
-            # Vérifier si la réponse est correcte
             accurate = self.check_response(resp, ink_color)
 
-            # Sauvegarde des données
-            self.results.append({
+            trial_result = {
                 'trial': trial,
                 'word': word,
                 'ink_color': ink_color,
@@ -133,7 +119,16 @@ class Stroop:
                 'response_color': self.key_mapping.get(resp, 'none'),
                 'accurate': accurate,
                 'RT': rt
-            })
+            }
+            self.results.append(trial_result)
+
+            # 🔎 DEBUG temps réel (comme Flanker et NBack)
+            print(f" Essai {trial:2d} | Mot: {word} | "
+                  f"Couleur: {ink_color} | "
+                  f"Congruent: {congruent} | "
+                  f"Réponse: {trial_result['response_color']} | "
+                  f"Correct: {accurate} | "
+                  f"RT: {rt if rt else 'N/A'}", flush=True)
 
         self.print_results_summary()
         return self.results
@@ -141,14 +136,11 @@ class Stroop:
     def check_response(self, resp, ink_color):
         if ink_color in self.key_mapping.values():
             if resp:
-                # Si une réponse est attendue, vérifier si elle est correcte
                 resp_color = self.key_mapping.get(resp)
                 return resp_color == ink_color
             else:
-                # Si aucune réponse n'est donnée alors qu'elle est attendue, c'est incorrect
                 return False
         else:
-            # Si aucune réponse n'est attendue, alors l'absence de réponse est correcte
             return resp is None
 
     def print_results_summary(self):
@@ -156,7 +148,8 @@ class Stroop:
         n_trials = len(self.results)
         print(f"\n--- Résultats de la tâche Stroop ---")
         print(f"Corrects : {n_correct} / {n_trials} ({100 * n_correct / n_trials:.1f}%)")
-        mean_rt = sum(r['RT'] for r in self.results if r['RT'] is not None) / sum(r['RT'] is not None for r in self.results) if any(r['RT'] is not None for r in self.results) else 0
+        mean_rt = (sum(r['RT'] for r in self.results if r['RT'] is not None) /
+                   sum(r['RT'] is not None for r in self.results)) if any(r['RT'] is not None for r in self.results) else 0
         print(f"RT moyen (sur réponses) : {mean_rt:.3f} s")
         print("\nDétail par essai :")
         for r in self.results:

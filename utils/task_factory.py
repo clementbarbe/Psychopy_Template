@@ -2,7 +2,6 @@ from tasks.nback import NBack
 from tasks.digitspan import DigitSpan
 from tasks.flanker import Flanker
 from tasks.stroop import Stroop
-from tasks.oddball import AuditoryOddball
 
 def create_task(config, win):
     base_kwargs = {
@@ -24,8 +23,6 @@ def create_task(config, win):
     elif task_config == 'DigitSpan':
         return DigitSpan(
             **base_kwargs,
-            span_length=config['span_length'],
-            n_trials=config['n_trials'],
             digit_dur=config['digit_dur'],
             isi=config['isi']
         )
@@ -45,15 +42,6 @@ def create_task(config, win):
             stim_dur=config['stim_dur']
         )   
     
-    elif task_config == 'AuditoryOddball':
-        return AuditoryOddball(
-            **base_kwargs,
-            p_deviant=config['p_deviant'],
-            n_trials=config['n_trials'],
-            isi=config['isi'],
-            stim_dur=config['stim_dur']
-        )
-
     else:
         print("Tâche inconnue.")
         return None

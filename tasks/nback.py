@@ -69,73 +69,46 @@ class NBack:
         self.letters = seq
 
     def run(self):
-        # Affiche les instructions à l'utilisateur
         self.show_instructions()
-
-        # Attente du trigger scanner avant de démarrer la tâche
         self.wait_for_trigger(trigger_key='t')
-
-        # Génère la séquence de lettres pour la tâche N-Back
         self.generate_sequence()
 
-        # Parcourt chaque lettre dans la séquence générée
         for idx, letter in enumerate(self.letters):
-            # Vérifie si l'utilisateur souhaite quitter l'expérience
             should_quit(self.win)
-
-            # Efface les événements précédents pour éviter les interférences
             event.clearEvents()
 
-            # Affiche le stimulus de fixation (un signe '+') pendant 0.5 secondes
+            # Fixation
             self.fixation.draw()
             self.win.flip()
             core.wait(self.isi)
 
-            # Prépare le stimulus (la lettre) à afficher
+            # Stimulus
             self.stim.text = letter
             self.stim.draw()
             self.win.flip()
-
-            # Réinitialise le chronomètre pour mesurer le temps de réponse
             self.trial_clock.reset()
 
-            # Initialise les variables pour la réponse et le temps de réaction
             resp = 'no'
             rt = None
             responded = False
-
-            # Définit la fenêtre de temps pendant laquelle une réponse sera acceptée
             response_window = self.stim_dur 
 
-            # Boucle pour capturer la réponse de l'utilisateur pendant la fenêtre de réponse
             while self.trial_clock.getTime() < response_window:
-                # Récupère les touches pressées par l'utilisateur
                 keys = event.getKeys(keyList=['space', 'n', 'escape'], timeStamped=self.trial_clock)
-
-                # Vérifie si une touche a été pressée et si une réponse n'a pas encore été enregistrée
                 if keys and not responded:
                     key, press_time = keys[0]
                     if key == 'escape':
-                        # Si la touche 'escape' est pressée, quitte l'expérience
                         should_quit(self.win, quit=True)
                     elif key in ['space', 'n']:
-                        # Enregistre la réponse ('yes' pour espace, 'no' pour 'n')
                         resp = 'yes' if key == 'space' else 'no'
-                        # Enregistre le temps de réaction
                         rt = round(press_time, 5)
                         responded = True
-
-                # Attend un court instant pour éviter de surcharger le processeur
                 core.wait(0.001)
 
-            # Détermine si la lettre actuelle est une cible (correspond à la lettre N positions avant)
             is_target = (idx >= self.N and letter == self.letters[idx - self.N])
-
-            # Vérifie si la réponse de l'utilisateur est correcte
             accurate = (resp == 'yes' and is_target) or (resp == 'no' and not is_target)
 
-            # Enregistre les résultats de l'essai actuel
-            self.results.append({
+            trial_result = {
                 'trial': idx + 1,
                 'letter': letter,
                 'letter_Nback': self.letters[idx - self.N] if idx >= self.N else 'N/A',
@@ -143,49 +116,47 @@ class NBack:
                 'response': resp,
                 'accurate': accurate,
                 'RT': rt
-            })
+            }
+            self.results.append(trial_result)
 
-            # Calcule le temps restant dans l'intervalle inter-stimulus
+            # 🔎 DEBUG temps réel (comme Flanker)
+            print(f" Essai {idx+1:2d} | Lettre: {letter} | "
+                  f"N-back: {trial_result['letter_Nback']} | "
+                  f"Cible: {is_target} | "
+                  f"Réponse: {resp} | "
+                  f"Correct: {accurate} | "
+                  f"RT: {rt if rt is not None else 'N/A'}", flush=True)
+
             elapsed = self.trial_clock.getTime()
             remaining_isi = self.isi - max(elapsed, self.stim_dur)
-
-            # Attend le temps restant pour respecter l'intervalle inter-stimulus
             if remaining_isi > 0:
                 core.wait(remaining_isi)
 
-        # Affiche un résumé des résultats à la fin de la tâche
         self.print_results_summary()
-
-        # Sauvegarde les résultats si l'option est activée
         if self.enregistrer:
             self.save_results()
-
-        # Retourne les résultats
         return self.results
 
     def print_results_summary(self):
         print("\n--- Résultats de la tâche N-Back ---")
-        
         total_correct = sum(1 for r in self.results if r['accurate'])
         total_trials = len(self.results)
         percent_correct = total_correct / total_trials * 100 if total_trials else 0
-
         print(f"Réponses correctes : {total_correct} / {total_trials} ({percent_correct:.1f}%)\n")
 
         print("Détail par essai :")
         for r in self.results:
-            trial_str = f"Essai {r['trial']:>2} | Lettre: {r['letter']} | "
-            target_str = f"Cible: {str(r['is_target']):<5} | "
-            resp_str = f"Réponse: {r['response']:<4} | "
-            correct_str = f"Correct: {str(r['accurate']):<5} | "
-            rt_str = f"RT: {r['RT'] if r['RT'] is not None else 'N/A'}"
-            print(trial_str + target_str + resp_str + correct_str + rt_str)
+            print(f"Essai {r['trial']:2d} | Lettre: {r['letter']} | "
+                  f"N-back: {r['letter_Nback']} | "
+                  f"Cible: {r['is_target']} | "
+                  f"Réponse: {r['response']} | "
+                  f"Correct: {r['accurate']} | "
+                  f"RT: {r['RT'] if r['RT'] is not None else 'N/A'}")
 
     def save_results(self):
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         fname = f"{self.nom}_N{self.N}_{ts}.csv"
         path = os.path.join(self.data_dir, fname)
-        
         with open(path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=[
                 'participant', 'date', 'N', 'trial',

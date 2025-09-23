@@ -1,7 +1,6 @@
-from psychopy import visual, core
+from psychopy import visual, core, hardware
 from gui.menu import Menu
 from utils.task_factory import create_task
-from utils.timing import analyze_timing
 
 
 def run_task(config):
@@ -14,15 +13,6 @@ def run_task(config):
         units='norm'
     )
 
-    # Logger des timestamps
-    flip_times = []
-    original_flip = win.flip
-    def logged_flip(*args, **kwargs):
-        ret = original_flip(*args, **kwargs)
-        flip_times.append(core.getTime())
-        return ret
-    win.flip = logged_flip
-
     # Exécution de la tâche
     task = create_task(config, win)
     results = None
@@ -32,13 +22,7 @@ def run_task(config):
             task.save_results()
 
     win.close()
-
-    # Analyse post-tâche
-    if flip_times:
-        analyze_timing(flip_times, expected_hz=config.get('expected_hz', 60.0))
-
     return results
-
 
 def main():
     while True:
@@ -50,7 +34,6 @@ def main():
 
         print("Configuration validée:", config)
         run_task(config)
-
 
 if __name__ == '__main__':
     main()

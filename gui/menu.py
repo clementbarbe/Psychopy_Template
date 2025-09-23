@@ -15,7 +15,7 @@ class ExperimentMenu(QMainWindow):
             'nom': '',
             'enregistrer': True,
             'window_size': (1500, 1500),
-            'fullscr': False
+            'fullscr': True
         }
 
         self.initUI()
@@ -76,11 +76,6 @@ class ExperimentMenu(QMainWindow):
         self.stroop_tab = QWidget()
         self.init_stroop_tab()
         self.tabs.addTab(self.stroop_tab, "Stroop")
-
-        #Onglet OddBall
-        self.oddball_tab = QWidget()
-        self.init_oddball_tab()
-        self.tabs.addTab(self.oddball_tab, "Oddball")
 
         parent_layout.addWidget(self.tabs)
 
@@ -147,24 +142,6 @@ class ExperimentMenu(QMainWindow):
         params_group = QGroupBox("Paramètres DigitSpan")
         params_layout = QVBoxLayout()  # Layout vertical pour les paramètres
 
-        # Longueur empan
-        span_layout = QVBoxLayout()  # Utilisez QVBoxLayout pour chaque sous-section
-        lbl_span = QLabel("Longueur empan:")
-        self.spin_span = QSpinBox()
-        self.spin_span.setRange(1, 10)
-        self.spin_span.setValue(5)
-        span_layout.addWidget(lbl_span)
-        span_layout.addWidget(self.spin_span)
-
-        # Nombre essais
-        trials_layout = QVBoxLayout()  # Utilisez QVBoxLayout pour chaque sous-section
-        lbl_trials = QLabel("Nombre d'essais:")
-        self.spin_digit_trials = QSpinBox()
-        self.spin_digit_trials.setRange(1, 20)
-        self.spin_digit_trials.setValue(3)
-        trials_layout.addWidget(lbl_trials)
-        trials_layout.addWidget(self.spin_digit_trials)
-
         # Durées
         dur_layout = QVBoxLayout()  # Utilisez QVBoxLayout pour chaque sous-section
         lbl_digit_dur = QLabel("Durée chiffre (s):")
@@ -180,9 +157,6 @@ class ExperimentMenu(QMainWindow):
         dur_layout.addWidget(lbl_digit_isi)
         dur_layout.addWidget(self.spin_digit_isi)
 
-        # Ajoutez les sous-layouts au layout principal des paramètres
-        params_layout.addLayout(span_layout)
-        params_layout.addLayout(trials_layout)
         params_layout.addLayout(dur_layout)
         params_group.setLayout(params_layout)
 
@@ -293,71 +267,6 @@ class ExperimentMenu(QMainWindow):
 
         # Retourne l'onglet pour que tu puisses l'ajouter à ton QTabWidget
         return self.stroop_tab
-    
-    def init_oddball_tab(self):
-        # Crée le widget de l'onglet et son layout principal
-        self.oddball_tab = QWidget()
-        layout = QVBoxLayout()
-        self.oddball_tab.setLayout(layout)
-
-        # Groupe de paramètres
-        params_group = QGroupBox("Paramètres Auditory Oddball")
-        params_layout = QVBoxLayout()
-
-        # Probabilité déviante
-        p_layout = QVBoxLayout()
-        lbl_p = QLabel("Probabilité déviante (0.0–1.0):")
-        self.spin_p_deviant = QDoubleSpinBox()
-        self.spin_p_deviant.setRange(0.0, 1.0)      # on passe à 0.0–1.0
-        self.spin_p_deviant.setSingleStep(0.01)     # incrément minimal
-        self.spin_p_deviant.setDecimals(2)          # deux décimales
-        self.spin_p_deviant.setValue(0.20)          # valeur par défaut 0.20 = 20%
-        p_layout.addWidget(lbl_p)
-        p_layout.addWidget(self.spin_p_deviant)
-
-        # Nombre d'essais
-        trials_layout = QVBoxLayout()
-        lbl_trials = QLabel("Nombre d'essais:")
-        self.spin_oddball_trials = QSpinBox()
-        self.spin_oddball_trials.setRange(1, 50)
-        self.spin_oddball_trials.setValue(10)
-        trials_layout.addWidget(lbl_trials)
-        trials_layout.addWidget(self.spin_oddball_trials)
-
-        # Durées ISI et stimulus
-        dur_layout = QVBoxLayout()
-        lbl_isi = QLabel("ISI (s):")
-        self.spin_oddball_isi = QDoubleSpinBox()
-        self.spin_oddball_isi.setRange(0.1, 5.0)
-        self.spin_oddball_isi.setSingleStep(0.1)
-        self.spin_oddball_isi.setValue(1.0)
-
-        lbl_stim = QLabel("Durée stimulus (s):")
-        self.spin_oddball_dur = QDoubleSpinBox()
-        self.spin_oddball_dur.setRange(0.01, 1.0)
-        self.spin_oddball_dur.setSingleStep(0.01)
-        self.spin_oddball_dur.setValue(0.1)
-
-        dur_layout.addWidget(lbl_isi)
-        dur_layout.addWidget(self.spin_oddball_isi)
-        dur_layout.addWidget(lbl_stim)
-        dur_layout.addWidget(self.spin_oddball_dur)
-
-        # Assemblage des layouts de paramètres
-        params_layout.addLayout(p_layout)
-        params_layout.addLayout(trials_layout)
-        params_layout.addLayout(dur_layout)
-        params_group.setLayout(params_layout)
-
-        # Bouton de lancement
-        btn_run = QPushButton("Lancer Auditory Oddball")
-        btn_run.clicked.connect(self.run_oddball)  
-
-        # Ajout au layout principal
-        layout.addWidget(params_group)
-        layout.addStretch()
-        layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
-
 
     def validate_config(self):
         """Valide la configuration générale"""
@@ -390,8 +299,6 @@ class ExperimentMenu(QMainWindow):
 
         self.config.update({
             'tache': 'DigitSpan',
-            'span_length': self.spin_span.value(),
-            'n_trials': self.spin_digit_trials.value(),
             'digit_dur': self.spin_digit_dur.value(),
             'isi': self.spin_digit_isi.value()
         })
@@ -426,21 +333,6 @@ class ExperimentMenu(QMainWindow):
 
     def get_config(self):
         return self.config
-    
-
-    def run_oddball(self):
-        if not self.validate_config():
-            return
-
-        self.config.update({
-            'tache': 'AuditoryOddball',
-            'p_deviant': self.spin_p_deviant.value() ,  
-            'n_trials': self.spin_oddball_trials.value(),
-            'isi': self.spin_oddball_isi.value(),
-            'stim_dur': self.spin_oddball_dur.value()
-        })
-        self.close()
-        QApplication.quit()
 
 def show_qt_menu():
     app = QApplication(sys.argv)
