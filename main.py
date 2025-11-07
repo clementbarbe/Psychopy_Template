@@ -1,52 +1,40 @@
-from psychopy import visual, core, hardware
+from psychopy import visual, logging
 from gui.menu import Menu
 from utils.task_factory import create_task
 from utils.logger import get_logger
 
+# Supprime les warnings PsychoPy
+logging.console.setLevel(logging.ERROR)
+
 
 def run_task(config):
-    """Exécute une tâche basée sur la configuration, avec logging temporel avancé"""
+    """Exécute une tâche basée sur la configuration"""
     logger = get_logger()
-    logger.log("Création de la fenêtre PsychoPy...")
     win = visual.Window(
-        size=config['window_size'],
         fullscr=config['fullscr'],
         color='black',
         units='norm',
-        screen=config['screenid'],
+        screen=config['screenid']
     )
-    logger.ok("Fenêtre PsychoPy créée ({}x{}, fullscr={}, écran={})".format(
-        *config['window_size'], config['fullscr'], config['screenid']
-    ))
 
-    logger.log("Création de la tâche '{}'...".format(config['tache']))
     task = create_task(config, win)
     if not task:
-        logger.err("Échec de création de la tâche '{}'".format(config['tache']))
+        logger.err(f"Échec de création de la tâche '{config['tache']}'")
         win.close()
         return None
 
-    logger.ok("Tâche '{}' prête".format(config['tache']))
-    results = None
     try:
-        logger.log("Démarrage de l'exécution de la tâche...")
         results = task.run()
-        logger.ok("Tâche '{}' terminée avec succès".format(config['tache']))
     except Exception as e:
-        logger.err("Erreur pendant l'exécution de la tâche : {}".format(e))
+        logger.err(f"Erreur pendant l'exécution de la tâche : {e}")
         raise
     finally:
         if hasattr(task, 'save_results') and config.get('enregistrer', True):
-            logger.log("Sauvegarde des résultats...")
             try:
                 task.save_results()
-                logger.ok("Résultats sauvegardés")
             except Exception as e:
-                logger.err("Échec sauvegarde résultats : {}".format(e))
-
-        logger.log("Fermeture de la fenêtre...")
+                logger.err(f"Échec sauvegarde résultats : {e}")
         win.close()
-        logger.ok("Fenêtre fermée")
 
     return results
 
@@ -54,31 +42,20 @@ def run_task(config):
 def main():
     logger = get_logger()
     logger.padding = 30
-    logger.ok("Démarrage de l'application PsychoPy")
+    menu = Menu()
 
     while True:
-        logger.log("Affichage du menu de configuration...")
-        menu = Menu()
         config = menu.show()
-        
         if not config:
-            logger.warn("Configuration annulée par l'utilisateur")
             break
 
-        logger.ok("Configuration validée : participant='{}', tâche='{}'".format(
-            config['nom'], config['tache']
-        ))
-        
+        config.pop('monitor', None)
+        config.pop('colorspace', None)
+
         try:
             run_task(config)
-            logger.ok("Session terminée pour '{}'".format(config['nom']))
         except Exception as e:
-            logger.err("Erreur fatale dans run_task : {}".format(e))
-
-        # Optionnel : demander si on continue
-        # (ou boucle infinie si tu veux relancer directement)
-
-    logger.ok("Application terminée proprement")
+            logger.err(f"Erreur fatale dans run_task : {e}")
 
 if __name__ == '__main__':
     main()

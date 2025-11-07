@@ -15,9 +15,10 @@ class ExperimentMenu(QMainWindow):
         self.config = {
             'nom': '',
             'enregistrer': True,
-            'window_size': (2000, 2000),
             'fullscr': True,
             'screenid': 1,
+            'monitor' : 'temp_monitor',
+            'colorspace' : 'rgb'
         }
         self.initUI()
 
@@ -52,26 +53,37 @@ class ExperimentMenu(QMainWindow):
 
     def create_task_tabs(self, parent_layout):
         self.tabs = QTabWidget()
+
         # NBack
         self.nback_tab = QWidget()
         self.init_nback_tab()
         self.tabs.addTab(self.nback_tab, "NBack")
+
         # DigitSpan
         self.digit_tab = QWidget()
         self.init_digitspan_tab()
         self.tabs.addTab(self.digit_tab, "DigitSpan")
+
         # Flanker
         self.flanker_tab = QWidget()
         self.init_flanker_tab()
         self.tabs.addTab(self.flanker_tab, "Flanker")
+
         # Stroop
         self.stroop_tab = QWidget()
         self.init_stroop_tab()
         self.tabs.addTab(self.stroop_tab, "Stroop")
+
         # Visual Memory
         self.visualmemory_tab = QWidget()
         self.init_visualmemory_tab()
         self.tabs.addTab(self.visualmemory_tab, "Visual Memory")
+
+        # Temporal Judgement
+        self.temporaljudgement_tab = QWidget()
+        self.init_temporaljudgement_tab()
+        self.tabs.addTab(self.temporaljudgement_tab, "Temporal Judgement")
+
         parent_layout.addWidget(self.tabs)
 
     def init_nback_tab(self):
@@ -175,45 +187,53 @@ class ExperimentMenu(QMainWindow):
         layout.addStretch()
         layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
 
-    def init_stroop_tab(self):
-        layout = QVBoxLayout()
-        self.stroop_tab = QWidget()
-        self.stroop_tab.setLayout(layout)
-        params_group = QGroupBox("Paramètres Stroop")
-        params_layout = QVBoxLayout()
-        trials_layout = QHBoxLayout()
-        lbl_trials = QLabel("Nombre d'essais :")
-        self.spin_stroop_trials = QSpinBox()
-        self.spin_stroop_trials.setRange(1, 500)
-        self.spin_stroop_trials.setValue(30)
-        trials_layout.addWidget(lbl_trials)
-        trials_layout.addWidget(self.spin_stroop_trials)
-        dur_layout = QHBoxLayout()
-        lbl_dur = QLabel("Durée stimulus (s) :")
-        self.spin_stroop_dur = QDoubleSpinBox()
-        self.spin_stroop_dur.setRange(0.1, 5.0)
-        self.spin_stroop_dur.setSingleStep(0.1)
-        self.spin_stroop_dur.setDecimals(2)
-        self.spin_stroop_dur.setValue(1.5)
-        dur_layout.addWidget(lbl_dur)
-        dur_layout.addWidget(self.spin_stroop_dur)
-        lbl_isi = QLabel("ISI (s) :")
-        self.spin_stroop_isi = QDoubleSpinBox()
-        self.spin_stroop_isi.setRange(0.1, 5.0)
-        self.spin_stroop_isi.setSingleStep(0.1)
-        self.spin_stroop_isi.setDecimals(2)
-        self.spin_stroop_isi.setValue(1.0)
-        dur_layout.addWidget(lbl_isi)
-        dur_layout.addWidget(self.spin_stroop_isi)
-        params_layout.addLayout(trials_layout)
-        params_layout.addLayout(dur_layout)
-        params_group.setLayout(params_layout)
-        btn_run = QPushButton("Lancer Stroop")
-        btn_run.clicked.connect(self.run_stroop)
-        layout.addWidget(params_group)
-        layout.addStretch()
-        layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
+
+    def init_stroop_tab(self): 
+        layout = QVBoxLayout() 
+        self.stroop_tab = QWidget() 
+        self.stroop_tab.setLayout(layout) 
+
+        params_group = QGroupBox("Paramètres Stroop") 
+        params_layout = QVBoxLayout() 
+        trials_layout = QHBoxLayout() 
+
+        lbl_trials = QLabel("Nombre d'essais :") 
+        self.spin_stroop_trials = QSpinBox() 
+        self.spin_stroop_trials.setRange(1, 500) 
+        self.spin_stroop_trials.setValue(30) 
+        trials_layout.addWidget(lbl_trials) 
+        trials_layout.addWidget(self.spin_stroop_trials) 
+        dur_layout = QHBoxLayout() 
+
+        lbl_dur = QLabel("Durée stimulus (s) :") 
+        self.spin_stroop_dur = QDoubleSpinBox() 
+        self.spin_stroop_dur.setRange(0.1, 5.0) 
+        self.spin_stroop_dur.setSingleStep(0.1) 
+        self.spin_stroop_dur.setDecimals(2) 
+        self.spin_stroop_dur.setValue(1.5) 
+        dur_layout.addWidget(lbl_dur) 
+        dur_layout.addWidget(self.spin_stroop_dur) 
+
+        lbl_isi = QLabel("ISI (s) :") 
+        self.spin_stroop_isi = QDoubleSpinBox() 
+        self.spin_stroop_isi.setRange(0.1, 5.0) 
+        self.spin_stroop_isi.setSingleStep(0.1) 
+        self.spin_stroop_isi.setDecimals(2) 
+        self.spin_stroop_isi.setValue(1.0) 
+        dur_layout.addWidget(lbl_isi) 
+        dur_layout.addWidget(self.spin_stroop_isi) 
+        params_layout.addLayout(trials_layout) 
+        params_layout.addLayout(dur_layout) 
+        params_group.setLayout(params_layout) 
+
+        btn_run = QPushButton("Lancer Stroop") 
+        btn_run.clicked.connect(self.run_stroop) 
+        layout.addWidget(params_group) 
+        layout.addStretch() 
+        layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight) 
+
         return self.stroop_tab
+    
 
     def init_visualmemory_tab(self):
         layout = QVBoxLayout()
@@ -238,6 +258,50 @@ class ExperimentMenu(QMainWindow):
         layout.addWidget(params_group)
         layout.addStretch()
         layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
+
+    def init_temporaljudgement_tab(self):
+        layout = QVBoxLayout()
+        self.temporaljudgement_tab.setLayout(layout)
+
+        params_group = QGroupBox("Paramètres Temporal Judgement")
+        params_layout = QVBoxLayout()
+
+        trials_layout = QHBoxLayout()
+        lbl_trials = QLabel("Nombre d'essais :")
+        self.spin_temporal_trials = QSpinBox()
+        self.spin_temporal_trials.setRange(1, 500)
+        self.spin_temporal_trials.setValue(30)
+        trials_layout.addWidget(lbl_trials)
+        trials_layout.addWidget(self.spin_temporal_trials)
+
+        isi_layout = QHBoxLayout()
+        lbl_isi = QLabel("ISI (s) :")
+        self.spin_temporal_isi = QDoubleSpinBox()
+        self.spin_temporal_isi.setRange(0.1, 5.0)
+        self.spin_temporal_isi.setSingleStep(0.1)
+        self.spin_temporal_isi.setDecimals(2)
+        self.spin_temporal_isi.setValue(1.0)
+        isi_layout.addWidget(lbl_isi)
+        isi_layout.addWidget(self.spin_temporal_isi)
+
+        delays_layout = QHBoxLayout()
+        lbl_delays = QLabel("Délais (ms, séparés par virgule) :")
+        self.line_temporal_delays = QLineEdit()
+        self.line_temporal_delays.setText("200,400,600")
+        delays_layout.addWidget(lbl_delays)
+        delays_layout.addWidget(self.line_temporal_delays)
+
+        params_layout.addLayout(trials_layout)
+        params_layout.addLayout(isi_layout)
+        params_layout.addLayout(delays_layout)
+        params_group.setLayout(params_layout)
+
+        btn_run = QPushButton("Lancer Temporal Judgement")
+        btn_run.clicked.connect(self.run_temporal_judgement)
+
+        layout.addWidget(params_group)
+        layout.addStretch()
+        layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)      
 
     def validate_config(self):
         logger = get_logger()
@@ -339,9 +403,41 @@ class ExperimentMenu(QMainWindow):
         self.close()
         QApplication.quit()
 
+    def run_temporal_judgement(self):
+        if not self.validate_config():
+            return
+
+        # Récupération des paramètres depuis l’interface
+        n_trials = self.spin_temporal_trials.value()
+        isi = self.spin_temporal_isi.value()
+        delays_str = self.line_temporal_delays.text().strip()
+
+        # Conversion des délais en liste d'entiers
+        try:
+            delays = [int(x.strip()) for x in delays_str.split(',') if x.strip()]
+            if not delays:
+                raise ValueError("Aucun délai valide fourni.")
+        except Exception:
+            print("⚠️ Erreur : la liste des délais doit contenir des valeurs entières séparées par des virgules (ex: 200,400,600).")
+            return
+
+        # Mise à jour de la configuration
+        self.config.update({
+            'tache': 'TemporalJudgement',
+            'n_trials': n_trials,
+            'isi': isi,
+            'delays_ms': delays
+        })
+
+        print(f"Lancement Temporal Judgement : essais={n_trials}, ISI={isi}, délais={delays}")
+
+        # Fermeture propre
+        self.close()
+        QApplication.quit()
+
+
     def get_config(self):
         return self.config
-
 
 def show_qt_menu():
     logger = get_logger()

@@ -3,6 +3,7 @@ from tasks.digitspan import DigitSpan
 from tasks.flanker import Flanker
 from tasks.stroop import Stroop
 from tasks.visualmemory import VisualMemory
+from tasks.temporaljudgement import TemporalJudgement
 
 def create_task(config, win):
     base_kwargs = {
@@ -49,6 +50,11 @@ def create_task(config, win):
             **base_kwargs,  
             
         )   
+    
+    if task_config == 'TemporalJudgement':
+        return TemporalJudgement(
+            **base_kwargs,  
+        )
     
     else:
         print("Tâche inconnue.")
