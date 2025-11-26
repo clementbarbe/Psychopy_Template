@@ -20,9 +20,3 @@ Il fournit une interface PyQt6 permettant de sélectionner et paramétrer rapide
 - Chaque tâche propose des paramètres ajustables (durées, ISI, nombre d’essais, etc.).
 - Le menu renvoie une configuration complète à PsychoPy pour lancer la tâche.
 
-## Installation
-
-Installer PyQt6 :
-
-```bash
-pip install PyQt6
