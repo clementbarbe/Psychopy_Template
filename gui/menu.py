@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTabWidget, QLineEdit, QCheckBox, QPushButton, QLabel,
-                            QSpinBox, QDoubleSpinBox, QGroupBox, QMessageBox)
+                            QSpinBox, QDoubleSpinBox, QGroupBox, QMessageBox, QComboBox)
 from PyQt6.QtCore import Qt
 from utils.utils import is_valid_name
 from utils.logger import get_logger
@@ -11,7 +11,7 @@ class ExperimentMenu(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Configuration Expérimentale")
-        self.setFixedSize(800, 600)
+        self.setFixedSize(950, 600)
         self.config = {
             'nom': '',
             'enregistrer': True,
@@ -41,12 +41,21 @@ class ExperimentMenu(QMainWindow):
         lbl_screen = QLabel("Écran:")
         self.screenid = QSpinBox()
         self.screenid.setRange(0, len(QApplication.screens()) )
-        self.screenid.setValue(1)  # Écran 2 (index 1)
+        self.screenid.setValue(1)
+        
+        lbl_mode = QLabel("Mode touches:")
+        self.combo_mode = QComboBox()
+        self.combo_mode.addItem("PC")
+        self.combo_mode.addItem("fmri")
+        self.combo_mode.setCurrentText("fmri")
+        
         layout.addWidget(lbl_name)
         layout.addWidget(self.txt_name)
         layout.addWidget(self.chk_save)
         layout.addWidget(lbl_screen)
         layout.addWidget(self.screenid)
+        layout.addWidget(lbl_mode)
+        layout.addWidget(self.combo_mode)
         layout.addStretch()
         group.setLayout(layout)
         parent_layout.addWidget(group)
@@ -262,52 +271,79 @@ class ExperimentMenu(QMainWindow):
     def init_temporaljudgement_tab(self):
         layout = QVBoxLayout()
         self.temporaljudgement_tab.setLayout(layout)
-
-        params_group = QGroupBox("Paramètres Temporal Judgement")
-        params_layout = QVBoxLayout()
-
+        
+        # ========== RUN BASE ==========
+        run_base_group = QGroupBox("Run Base")
+        run_base_layout = QVBoxLayout()
+        
+        btn_run_base_60 = QPushButton("Run Base - 60 essais puis 20 essais")
+        btn_run_base_60.clicked.connect(lambda: self.run_temporal_judgement(run_type='base', n_trials=60, run_number='00'))
+        run_base_layout.addWidget(btn_run_base_60)
+        
+        run_base_group.setLayout(run_base_layout)
+        layout.addWidget(run_base_group)
+        
+        # ========== RUN STANDARD ==========
+        run_standard_group = QGroupBox("Run Standard (20 essais)")
+        run_standard_layout = QVBoxLayout()
+        
+        run_number_layout = QHBoxLayout()
+        run_number_layout.addWidget(QLabel("Numéro de Run :"))
+        self.run_standard_spinbox = QSpinBox()
+        self.run_standard_spinbox.setMinimum(1)
+        self.run_standard_spinbox.setMaximum(99)
+        self.run_standard_spinbox.setValue(1)
+        run_number_layout.addWidget(self.run_standard_spinbox)
+        run_number_layout.addStretch()
+        run_standard_layout.addLayout(run_number_layout)
+        
+        btn_run_standard = QPushButton("Lancer Run Standard (20 essais)")
+        btn_run_standard.clicked.connect(lambda: self.run_temporal_judgement(run_type='standard', n_trials=20, run_number=str(self.run_standard_spinbox.value()).zfill(2)))
+        run_standard_layout.addWidget(btn_run_standard)
+        
+        run_standard_group.setLayout(run_standard_layout)
+        layout.addWidget(run_standard_group)
+        
+        # ========== RUN PERSONNALISÉ ==========
+        run_custom_group = QGroupBox("Run Personnalisé")
+        run_custom_layout = QVBoxLayout()
+        
         trials_layout = QHBoxLayout()
-        lbl_trials = QLabel("Nombre d'essais :")
-        self.spin_temporal_trials = QSpinBox()
-        self.spin_temporal_trials.setRange(1, 500)
-        self.spin_temporal_trials.setValue(30)
-        trials_layout.addWidget(lbl_trials)
-        trials_layout.addWidget(self.spin_temporal_trials)
-
-        isi_layout = QHBoxLayout()
-        lbl_isi = QLabel("ISI (s) :")
-        self.spin_temporal_isi = QDoubleSpinBox()
-        self.spin_temporal_isi.setRange(0.1, 5.0)
-        self.spin_temporal_isi.setSingleStep(0.1)
-        self.spin_temporal_isi.setDecimals(2)
-        self.spin_temporal_isi.setValue(1.0)
-        isi_layout.addWidget(lbl_isi)
-        isi_layout.addWidget(self.spin_temporal_isi)
-
-        delays_layout = QHBoxLayout()
-        lbl_delays = QLabel("Délais (ms, séparés par virgule) :")
-        self.line_temporal_delays = QLineEdit()
-        self.line_temporal_delays.setText("200,400,600")
-        delays_layout.addWidget(lbl_delays)
-        delays_layout.addWidget(self.line_temporal_delays)
-
-        params_layout.addLayout(trials_layout)
-        params_layout.addLayout(isi_layout)
-        params_layout.addLayout(delays_layout)
-        params_group.setLayout(params_layout)
-
-        btn_run = QPushButton("Lancer Temporal Judgement")
-        btn_run.clicked.connect(self.run_temporal_judgement)
-
-        layout.addWidget(params_group)
+        trials_layout.addWidget(QLabel("Nombre d'essais :"))
+        self.run_custom_trials_spinbox = QSpinBox()
+        self.run_custom_trials_spinbox.setMinimum(1)
+        self.run_custom_trials_spinbox.setMaximum(500)
+        self.run_custom_trials_spinbox.setValue(20)
+        trials_layout.addWidget(self.run_custom_trials_spinbox)
+        trials_layout.addStretch()
+        run_custom_layout.addLayout(trials_layout)
+        
+        run_num_layout = QHBoxLayout()
+        run_num_layout.addWidget(QLabel("Numéro de Run :"))
+        self.run_custom_number_spinbox = QSpinBox()
+        self.run_custom_number_spinbox.setMinimum(1)
+        self.run_custom_number_spinbox.setMaximum(99)
+        self.run_custom_number_spinbox.setValue(1)
+        run_num_layout.addWidget(self.run_custom_number_spinbox)
+        run_num_layout.addStretch()
+        run_custom_layout.addLayout(run_num_layout)
+        
+        btn_run_custom = QPushButton("Lancer Run Personnalisé")
+        btn_run_custom.clicked.connect(lambda: self.run_temporal_judgement(run_type='custom', n_trials=self.run_custom_trials_spinbox.value(), run_number=str(self.run_custom_number_spinbox.value()).zfill(2)))
+        run_custom_layout.addWidget(btn_run_custom)
+        
+        run_custom_group.setLayout(run_custom_layout)
+        layout.addWidget(run_custom_group)
+        
         layout.addStretch()
-        layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)      
+
 
     def validate_config(self):
         logger = get_logger()
         self.config['nom'] = self.txt_name.text().strip()
         self.config['enregistrer'] = self.chk_save.isChecked()
         self.config['screenid'] = self.screenid.value() - 1
+        self.config['mode'] = self.combo_mode.currentText()
         if not is_valid_name(self.config['nom']):
             QMessageBox.warning(self, "Erreur", "Nom invalide")
             logger.warn("Validation échouée : nom participant invalide")
@@ -403,35 +439,23 @@ class ExperimentMenu(QMainWindow):
         self.close()
         QApplication.quit()
 
-    def run_temporal_judgement(self):
+    def run_temporal_judgement(self, run_type='base', n_trials=60, run_number='00'):
         if not self.validate_config():
             return
-
-        # Récupération des paramètres depuis l’interface
-        n_trials = self.spin_temporal_trials.value()
-        isi = self.spin_temporal_isi.value()
-        delays_str = self.line_temporal_delays.text().strip()
-
-        # Conversion des délais en liste d'entiers
-        try:
-            delays = [int(x.strip()) for x in delays_str.split(',') if x.strip()]
-            if not delays:
-                raise ValueError("Aucun délai valide fourni.")
-        except Exception:
-            print("⚠️ Erreur : la liste des délais doit contenir des valeurs entières séparées par des virgules (ex: 200,400,600).")
-            return
-
-        # Mise à jour de la configuration
+        
         self.config.update({
             'tache': 'TemporalJudgement',
+            'run_type': run_type,
             'n_trials': n_trials,
-            'isi': isi,
-            'delays_ms': delays
+            'session': run_number,
+            'isi': (1500, 2500),
+            'delays_ms': [200, 300, 400, 550, 700, 800],
+            'response_options': [200, 300, 400, 550, 700, 800, 1000, 1200]
         })
-
-        print(f"Lancement Temporal Judgement : essais={n_trials}, ISI={isi}, délais={delays}")
-
-        # Fermeture propre
+        
+        logger = get_logger()
+        logger.log(f"Lancement Temporal Judgement : {run_type.upper()} - {n_trials} essais (Session {run_number}) | Mode: {self.config['mode']}")
+        
         self.close()
         QApplication.quit()
 

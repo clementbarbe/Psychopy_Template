@@ -53,7 +53,11 @@ def create_task(config, win):
     
     if task_config == 'TemporalJudgement':
         return TemporalJudgement(
-            **base_kwargs,  
+            **base_kwargs,
+            n_trials=config['n_trials'],
+            session=config['session'],
+            mode=config['mode'],
+            run_type=config['run_type']
         )
     
     else:
