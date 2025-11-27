@@ -18,6 +18,7 @@ class TemporalJudgement:
         # --- Experiment Parameters ---
         self.win = win
         self.frame_rate = win.getActualFrameRate(nIdentical=10, nMaxFrames=100, threshold=1)
+        print(self.frame_rate)
         self.nom = nom
         self.session = session
         self.enregistrer = enregistrer  # Save flag
@@ -302,17 +303,15 @@ class TemporalJudgement:
             self.log_step('action_performed', action_key=keys[0], rt_prep=action_time-wait_start)
 
             # 3. Precise Timing Logic
-            # Calculate exact target time
             target_light_time = action_time + (delay_ms / 1000.0)
             
             # Prepare stimulus *before* the deadline
             self.draw_lightbulb(base_color=base_color, bulb_on=True)
             
-            # Wait actively until just before the target frame (approx 3/4 * frame)
-            frame_tolerance_s = 0.75 * (1/self.frame_rate)
+            # Wait actively until just before the target frame (one frame)
+            frame_tolerance_s = (1/self.frame_rate)
             
             while self.task_clock.getTime() < (target_light_time - frame_tolerance_s):
-                self.check_for_ttl()
                 core.wait(0.001) 
 
             # Critical Flip: Syncs with vertical retrace to hit target_light_time
@@ -325,9 +324,9 @@ class TemporalJudgement:
             self.log_step('bulb_lit', actual_delay_ms=actual_delay, error_ms=actual_delay-delay_ms)
             
             core.wait(1.0)
-            self.check_for_ttl()
 
             # 4. Response Collection
+            t0_response = self.task_clock.getTime()
             self.log_step('response_prompt_shown')
             self.response_title.draw()
             self.response_options_text.draw()
@@ -345,7 +344,7 @@ class TemporalJudgement:
             if resp_keys:
                 resp_key, timestamp_key = resp_keys[0]
                 if resp_key == self.keys['quit']: should_quit(self.win, quit=True)
-                rt = timestamp_key - bulb_on_time
+                rt = timestamp_key - t0_response
                 response_ms = self.response_key_to_ms.get(resp_key)
                 
                 # Visual Feedback (Underline)
@@ -445,7 +444,7 @@ class TemporalJudgement:
         self.text_stim.text = "Fin de la session.\nMerci."
         self.text_stim.draw()
         self.win.flip()
-        core.wait(2.0)
+        core.wait(30.0)
         self.win.close()
         core.quit()
 
@@ -454,10 +453,10 @@ class TemporalJudgement:
         self.show_instructions()
         self.wait_for_trigger()
         
-        self.show_resting_state(duration_s=60) 
+        self.show_resting_state(duration_s=150) 
         
         if self.run_type == 'base':
-            self.run_trial_block(10, "BLOC 1", phase_tag='run_01')
+            self.run_trial_block(60, "BLOC 1", phase_tag='run_01')
             self.show_crisis_validation_window()
             self.run_trial_block(self.n_trials, "BLOC 2", phase_tag='run_02')
         else:

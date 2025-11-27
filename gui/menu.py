@@ -276,9 +276,19 @@ class ExperimentMenu(QMainWindow):
         run_base_group = QGroupBox("Run Base")
         run_base_layout = QVBoxLayout()
         
-        btn_run_base_60 = QPushButton("Run Base - 60 essais puis 20 essais")
-        btn_run_base_60.clicked.connect(lambda: self.run_temporal_judgement(run_type='base', n_trials=60, run_number='00'))
-        run_base_layout.addWidget(btn_run_base_60)
+        trials_base_layout = QHBoxLayout()
+        trials_base_layout.addWidget(QLabel("Nombre d'essais :"))
+        self.run_base_trials_spinbox = QSpinBox()
+        self.run_base_trials_spinbox.setMinimum(1)
+        self.run_base_trials_spinbox.setMaximum(120)
+        self.run_base_trials_spinbox.setValue(30)
+        trials_base_layout.addWidget(self.run_base_trials_spinbox)
+        trials_base_layout.addStretch()
+        run_base_layout.addLayout(trials_base_layout)
+        
+        btn_run_base = QPushButton("Lancer Run Base ")
+        btn_run_base.clicked.connect(lambda: self.run_temporal_judgement(run_type='base', n_trials=self.run_base_trials_spinbox.value(), run_number='00'))
+        run_base_layout.addWidget(btn_run_base)
         
         run_base_group.setLayout(run_base_layout)
         layout.addWidget(run_base_group)
@@ -297,7 +307,7 @@ class ExperimentMenu(QMainWindow):
         run_number_layout.addStretch()
         run_standard_layout.addLayout(run_number_layout)
         
-        btn_run_standard = QPushButton("Lancer Run Standard (20 essais)")
+        btn_run_standard = QPushButton("Lancer Run Standard (30 essais)")
         btn_run_standard.clicked.connect(lambda: self.run_temporal_judgement(run_type='standard', n_trials=20, run_number=str(self.run_standard_spinbox.value()).zfill(2)))
         run_standard_layout.addWidget(btn_run_standard)
         
@@ -336,7 +346,6 @@ class ExperimentMenu(QMainWindow):
         layout.addWidget(run_custom_group)
         
         layout.addStretch()
-
 
     def validate_config(self):
         logger = get_logger()
