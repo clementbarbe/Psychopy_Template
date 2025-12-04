@@ -486,7 +486,7 @@ class TemporalJudgement:
         if self.is_data_saved: return 
 
         # Utilisation du start_timestamp généré à l'init
-        fname = f"{self.nom}_GLOBAL_{self.session}_{self.start_timestamp}.csv"
+        fname = f"{self.nom}_session_{self.session}_start_{self.start_timestamp}.csv"
         path = os.path.join(self.data_dir, fname)
         
         print(f"Sauvegarde des données : {len(self.global_records)} lignes")

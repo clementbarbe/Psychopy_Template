@@ -40,8 +40,8 @@ class ExperimentMenu(QMainWindow):
         self.chk_save.setChecked(True)
         lbl_screen = QLabel("Écran:")
         self.screenid = QSpinBox()
-        self.screenid.setRange(0, len(QApplication.screens()) )
-        self.screenid.setValue(1)
+        self.screenid.setRange(1, len(QApplication.screens()) )
+        self.screenid.setValue(2)
         
         lbl_mode = QLabel("Mode touches:")
         self.combo_mode = QComboBox()
