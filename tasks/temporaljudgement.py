@@ -5,12 +5,11 @@ from utils.utils import should_quit
 import warnings
 
 # --- Console Logging Configuration ---
-# Suppress minor warnings to keep the console readable
 logging.console.setLevel(logging.ERROR)
 
 class TemporalJudgement:
     def __init__(self, win, nom, session='01', enregistrer=True, screenid=1, mode='fmri', run_type='base',
-                 n_trials=60, delays_ms=(200, 300, 400, 500, 600, 700),
+                 n_trials_base=72, n_trials_block=24, n_trials_training=12, delays_ms=(200, 300, 400, 500, 600, 700),
                  response_options=(100, 200, 300, 400, 500, 600, 700, 800),
                  stim_isi_range=(1500, 2500),
                  data_dir='data/temporal_judgement'):
@@ -18,14 +17,18 @@ class TemporalJudgement:
         # --- Experiment Parameters ---
         self.win = win
         self.frame_rate = win.getActualFrameRate(nIdentical=10, nMaxFrames=100, threshold=1)
-        print(self.frame_rate)
+        # On stocke le timestamp dès le début pour le nom du fichier
+        self.start_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
         self.nom = nom
         self.session = session
-        self.enregistrer = enregistrer  # Save flag
+        self.enregistrer = enregistrer
         self.screenid = screenid
         self.run_type = run_type
         self.mode = mode
-        self.n_trials = n_trials
+        self.n_trials_base = n_trials_base
+        self.n_trials_block = n_trials_block
+        self.n_trials_training = n_trials_training
         self.delays_ms = list(delays_ms)
         self.response_values_ms = list(response_options)
         self.stim_isi_range = (stim_isi_range[0]/1000 , stim_isi_range[1]/1000 )
@@ -33,7 +36,6 @@ class TemporalJudgement:
         os.makedirs(self.data_dir, exist_ok=True)
 
         # --- Global Logging System ---
-        # Stores every event (keypress, TTL, screen flip) sequentially
         self.global_records = [] 
         self.current_phase = 'setup'
         self.current_trial_idx = None 
@@ -46,7 +48,6 @@ class TemporalJudgement:
         bulb_size = (0.45 * 0.9, 0.9 * 0.9)
         bulb_pos = (0.0, 0.0)
         
-        # Load images with graceful fallback (shapes) if files are missing
         if os.path.exists(os.path.join(img_path, 'bulbof.png')):
             self.bulb_off_img = visual.ImageStim(self.win, image=os.path.join(img_path, 'bulbof.png'), size=bulb_size, pos=bulb_pos)
             self.bulb_on_img = visual.ImageStim(self.win, image=os.path.join(img_path, 'bulbon.png'), size=bulb_size, pos=bulb_pos)
@@ -69,7 +70,7 @@ class TemporalJudgement:
         self.response_key_to_ms = {key: ms for key, ms in zip(self.keys['responses'], self.response_values_ms)}
 
         # Timing Clocks
-        self.task_clock = None # Initialized upon receiving MRI trigger
+        self.task_clock = None 
         self.trigger_time = None
 
     # =========================================================================
@@ -77,13 +78,7 @@ class TemporalJudgement:
     # =========================================================================
     
     def log_step(self, event_type, trial=None, **kwargs):
-        """
-        Appends a single event dictionary to global_records.
-        Used for TTL pulses, keystrokes, and trial milestones.
-        """
         self.is_data_saved = False
-        
-        # Calculate time relative to T0 (Trigger)
         current_time = self.task_clock.getTime() if self.task_clock else 0.0
         t_idx = trial if trial is not None else self.current_trial_idx
 
@@ -95,20 +90,16 @@ class TemporalJudgement:
             'time_s': round(current_time, 5),
             'event_type': event_type
         }
-        
-        # Merge extra data (RTs, specific keys, etc.)
         entry.update(kwargs)
         self.global_records.append(entry)
 
     def check_for_ttl(self):
-        """ Polls for MRI trigger pulses ('t') in the background """
         if self.task_clock:
             keys = event.getKeys(keyList=[self.keys['trigger']], timeStamped=self.task_clock)
             for k, t in keys:
                 self.log_step('ttl_pulse', key=k, real_time=t)
 
     def _setup_keys(self):
-        """ Defines keymaps based on environment (fMRI vs Lab) """
         if self.mode == 'fmri':
             self.keys = {'action': 'b', 'responses': ['d', 'n', 'z', 'e', 'b', 'y', 'g', 'r'], 'trigger': 't', 'quit': 'escape'}
         else:
@@ -136,7 +127,6 @@ class TemporalJudgement:
             should_quit(self.win, quit=True)
 
     def wait_for_trigger(self):
-        """ Waits for the first MRI trigger to start the main clock (T0) """
         self.current_phase = 'waiting_trigger'
         self.text_stim.text = f"En attente du trigger scanner ('{self.keys['trigger']}')"
         self.text_stim.draw()
@@ -146,14 +136,13 @@ class TemporalJudgement:
         if keys and keys[0][0] == self.keys['quit']:
             should_quit(self.win, quit=True)
         
-        # Initialize T0
         self.task_clock = core.Clock() 
         self.trigger_time = 0.0 
         self.log_step('trigger_received', info="T0 start")
-        print(">>> Trigger received - Clock started")
+        print("- Trigger reçu - ")
 
     # --- RESTING STATE ---
-    def show_resting_state(self, duration_s=150):
+    def show_resting_state(self, duration_s):
         self.current_phase = 'resting_state'
         self.current_trial_idx = None
         
@@ -161,27 +150,33 @@ class TemporalJudgement:
         self.log_step('resting_state_start', duration_expected=duration_s)
         
         start_time = self.task_clock.getTime()
+        last_print_time = 0
+        
         while (self.task_clock.getTime() - start_time) < duration_s:
             self.fixation.draw()
             self.win.flip()
             
+            elapsed = self.task_clock.getTime() - start_time
+            
+            # Print toutes les 15 secondes
+            if elapsed - last_print_time >= 15:
+                print(f"Resting State : {int(elapsed)}s / {duration_s}s")
+                last_print_time = elapsed
+
             # Continuous checks
             self.check_for_ttl()
             if event.getKeys(keyList=[self.keys['quit']]):
                 should_quit(self.win, quit=True)
             core.wait(0.01)
-        
+
+        print(f"Resting State :{duration_s}s / {duration_s}s")
         self.log_step('resting_state_end')
 
     # --- CRISIS SIMULATION & VALIDATION ---
     def show_crisis_validation_window(self):
-        """ 
-        Interactive loop: 
-        1. Prompt start -> 2. Action/Crisis -> 3. Success/Fail Validation -> 4. Retry if needed 
-        """
         self.current_phase = 'crisis_validation'
         self.current_trial_idx = None
-        print("=== Crisis Validation Window ===")
+        print("=== Fenêtre de Validation de Crise ===")
 
         loop_crisis = True
         while loop_crisis:
@@ -201,11 +196,10 @@ class TemporalJudgement:
 
             # 2. Crisis Active
             self.log_step('crisis_action_started', trigger_key=keys[0])
-            msg_feedback = visual.TextStim(self.win, text='Crise en cours...\nAppuyer quand terminée', height=0.08)
-            msg_feedback.draw()
+            self.fixation.draw()
             self.win.flip()
             
-            core.wait(0.5) # Debounce
+            core.wait(0.5) 
             event.clearEvents()
             
             keys = []
@@ -218,7 +212,7 @@ class TemporalJudgement:
             self.log_step('crisis_action_ended', end_key=keys[0])
 
             # 3. Validation
-            choice_text = visual.TextStim(self.win, text='[1-4] Crise RÉUSSIE     [5-8] Crise ÉCHOUÉE', height=0.08)
+            choice_text = visual.TextStim(self.win, text='[1-4] Crise réussie     [5-8] Crise échouée', height=0.08)
             choice_text.draw()
             self.win.flip()
             self.log_step('crisis_validation_prompt')
@@ -249,7 +243,7 @@ class TemporalJudgement:
                 
                 keys = event.waitKeys(keyList=self.keys['responses'] + [self.keys['quit']])
                 idx_retry = self.keys['responses'].index(keys[0])
-                if idx_retry >= 4: # No Retry
+                if idx_retry >= 4: 
                     loop_crisis = False
                     self.log_step('crisis_retry_decision', choice='no_retry')
                 else:
@@ -270,87 +264,124 @@ class TemporalJudgement:
         bulb = self.bulb_on_img if bulb_on else self.bulb_off_img
         bulb.draw()
 
-    def run_trial(self, trial_index, condition, delay_ms):
-            should_quit(self.win)
-            self.current_trial_idx = trial_index
-            base_color = '#00FF00' if condition == 'active' else '#FF0000'
+    def run_trial(self, trial_index, total_trials, condition, delay_ms, feedback=False):
+        """
+        Unified trial function.
+        Total_trials ajouté pour l'affichage console.
+        """
+        should_quit(self.win)
+        self.current_trial_idx = trial_index
+        base_color = '#00FF00' if condition == 'active' else '#FF0000'
 
-            # 1. Trial Start & Fixation
-            self.log_step('trial_start', condition=condition, requested_delay_ms=delay_ms)
+        # --- 1. Trial Start ---
+        log_event = 'trial_start_feedback' if feedback else 'trial_start'
+        self.log_step(log_event, condition=condition, requested_delay_ms=delay_ms)
 
-            self.fixation.draw()
-            self.win.flip()
+        self.fixation.draw()
+        self.win.flip()
+        self.check_for_ttl()
+        core.wait(0.5)
+
+        # Show Bulb OFF
+        self.draw_lightbulb(base_color=base_color, bulb_on=False)
+        self.win.flip()
+        
+        # --- 2. Wait for Action (Keypress) ---
+        event.clearEvents(eventType='keyboard')
+        keys = []
+        wait_start = self.task_clock.getTime()
+        while not keys:
             self.check_for_ttl()
-            core.wait(0.5)
+            keys = event.getKeys(keyList=[self.keys['action'], self.keys['quit']])
+            if keys:
+                if keys[0] == self.keys['quit']: should_quit(self.win, quit=True)
+                break
+            core.wait(0.001)
 
-            # Show Bulb OFF
-            self.draw_lightbulb(base_color=base_color, bulb_on=False)
-            self.win.flip()
+        action_time = self.task_clock.getTime()
+        self.log_step('action_performed', action_key=keys[0], rt_prep=action_time-wait_start)
+
+        # --- 3. Precise Timing Logic ---
+        target_light_time = action_time + (delay_ms / 1000.0)
+        
+        self.draw_lightbulb(base_color=base_color, bulb_on=True)
+        
+        frame_tolerance_s = (0.75*1/self.frame_rate)
+        while self.task_clock.getTime() < (target_light_time - frame_tolerance_s):
+            core.wait(0.001) 
+
+        self.win.flip() # Bulb ON
+        
+        bulb_on_time = self.task_clock.getTime()
+        actual_delay = (bulb_on_time - action_time) * 1000
+        self.log_step('bulb_lit', actual_delay_ms=actual_delay, error_ms=actual_delay-delay_ms)
+        
+        # Random wait before response prompt
+        wait_duration = random.uniform(1.2, 1.8)
+        core.wait(wait_duration)
+        self.win.flip()
+
+        # --- 4. Response Collection ---
+        t0_response = self.task_clock.getTime()
+        self.log_step('response_prompt_shown')
+        
+        self.response_title.draw()
+        self.response_options_text.draw()
+        self.response_instr.draw()
+        self.win.flip()
+
+        event.clearEvents(eventType='keyboard')
+        resp_keys = event.waitKeys(maxWait=5.0, keyList=self.keys['responses'] + [self.keys['quit']], timeStamped=self.task_clock)
+        self.check_for_ttl()
+
+        rt = None
+        response_ms = None
+        
+        if resp_keys:
+            resp_key, timestamp_key = resp_keys[0]
+            if resp_key == self.keys['quit']: should_quit(self.win, quit=True)
+            rt = timestamp_key - t0_response
+            response_ms = self.response_key_to_ms.get(resp_key)
             
-            # 2. Wait for Action (Keypress)
-            event.clearEvents(eventType='keyboard')
-            keys = []
-            wait_start = self.task_clock.getTime()
-            while not keys:
-                self.check_for_ttl()
-                keys = event.getKeys(keyList=[self.keys['action'], self.keys['quit']])
-                if keys:
-                    if keys[0] == self.keys['quit']: should_quit(self.win, quit=True)
-                    break
-                core.wait(0.001)
-
-            action_time = self.task_clock.getTime()
-            self.log_step('action_performed', action_key=keys[0], rt_prep=action_time-wait_start)
-
-            # 3. Precise Timing Logic
-            target_light_time = action_time + (delay_ms / 1000.0)
+            idx_user = self.keys['responses'].index(resp_key)
             
-            # Prepare stimulus *before* the deadline
-            self.draw_lightbulb(base_color=base_color, bulb_on=True)
-            
-            # Wait actively until just before the target frame (one frame)
-            frame_tolerance_s = (1/self.frame_rate)
-            
-            while self.task_clock.getTime() < (target_light_time - frame_tolerance_s):
-                core.wait(0.001) 
-
-            # Critical Flip: Syncs with vertical retrace to hit target_light_time
-            self.win.flip()
-            
-            # Capture actual hardware flip time
-            bulb_on_time = self.task_clock.getTime()
-            actual_delay = (bulb_on_time - action_time) * 1000
-            
-            self.log_step('bulb_lit', actual_delay_ms=actual_delay, error_ms=actual_delay-delay_ms)
-            
-            core.wait(1.0)
-
-            # 4. Response Collection
-            t0_response = self.task_clock.getTime()
-            self.log_step('response_prompt_shown')
-            self.response_title.draw()
-            self.response_options_text.draw()
-            self.response_instr.draw()
-            self.win.flip()
-
-            event.clearEvents(eventType='keyboard')
-            resp_keys = event.waitKeys(maxWait=5.0, keyList=self.keys['responses'] + [self.keys['quit']], timeStamped=self.task_clock)
-            self.check_for_ttl()
-
-            rt = None
-            response_ms = None
-            resp_key = None
-
-            if resp_keys:
-                resp_key, timestamp_key = resp_keys[0]
-                if resp_key == self.keys['quit']: should_quit(self.win, quit=True)
-                rt = timestamp_key - t0_response
-                response_ms = self.response_key_to_ms.get(resp_key)
+            # --- FEEDBACK LOGIC ---
+            if feedback:
+                is_correct = (response_ms == delay_ms)
+                user_bar_color = 'green' if is_correct else 'yellow'
+                msg_text = "Bonne réponse !" if is_correct else f"La bonne réponse était : {delay_ms}"
+                msg_color = 'green' if is_correct else 'red'
                 
-                # Visual Feedback (Underline)
-                idx = self.keys['responses'].index(resp_key)
-                underline = visual.Line(self.win, start=(self.underline_x_positions[idx]-0.04, self.underline_y_line),
-                                        end=(self.underline_x_positions[idx]+0.04, self.underline_y_line),
+                self.response_title.draw()
+                self.response_options_text.draw()
+                
+                user_line = visual.Line(self.win, 
+                                        start=(self.underline_x_positions[idx_user]-0.04, self.underline_y_line),
+                                        end=(self.underline_x_positions[idx_user]+0.04, self.underline_y_line),
+                                        lineColor=user_bar_color, lineWidth=5)
+                user_line.draw()
+                
+                if not is_correct:
+                    try:
+                        idx_correct = self.response_values_ms.index(delay_ms)
+                        correct_line = visual.Line(self.win, 
+                                                start=(self.underline_x_positions[idx_correct]-0.04, self.underline_y_line),
+                                                end=(self.underline_x_positions[idx_correct]+0.04, self.underline_y_line),
+                                                lineColor='red', lineWidth=6)
+                        correct_line.draw()
+                    except ValueError: pass
+
+                fb_text = visual.TextStim(self.win, text=msg_text, color=msg_color, height=0.05, pos=(0, -0.2))
+                fb_text.draw()
+                
+                self.win.flip()
+                core.wait(1.5) 
+                
+            else:
+                # --- STANDARD (NO FEEDBACK) ---
+                underline = visual.Line(self.win, 
+                                        start=(self.underline_x_positions[idx_user]-0.04, self.underline_y_line),
+                                        end=(self.underline_x_positions[idx_user]+0.04, self.underline_y_line),
                                         lineColor='yellow', lineWidth=5)
                 self.response_title.draw()
                 self.response_options_text.draw()
@@ -358,71 +389,119 @@ class TemporalJudgement:
                 underline.draw()
                 self.win.flip()
                 core.wait(0.6)
-                self.log_step('response_given', response_key=resp_key, response_choice_ms=response_ms, rt_s=rt)
-                print(f"Trial {trial_index} | Delay: {delay_ms}ms | Answer: {response_ms}ms | RT: {rt:.4f}s")
-            else:
-                self.log_step('response_timeout')
-                too_slow = visual.TextStim(self.win, text="Trop lent !", color='red', height=0.12)
-                too_slow.draw()
-                self.win.flip()
-                core.wait(0.8)
 
-            # 5. Inter-Stimulus Interval (ISI)
-            isi = random.uniform(*self.stim_isi_range)
-            self.check_for_ttl()
-            core.wait(isi)
+            self.log_step('response_given', response_key=resp_key, response_choice_ms=response_ms, rt_s=rt, feedback_mode=feedback)
             
-            self.log_step('trial_summary_data', condition=condition, delay_target=delay_ms, delay_actual=actual_delay, response_ms=response_ms, isi=isi)
-            return True
+            # --- CUSTOM PRINT FORMAT ---
+            fb_info = f" | FB: {feedback}" if feedback else ""
+            print(f"Trial {trial_index}/{total_trials} | Condition: {condition} | Delay: {delay_ms} | Answer: {response_ms}{fb_info}")
 
-    def build_trials(self, n_trials):
-        conditions = ['active', 'passive']
-        trials = []
-        for _ in range(n_trials):
-            trials.append((random.choice(conditions), random.choice(self.delays_ms)))
+        else:
+            print(f"Trial {trial_index}/{total_trials} | Condition: {condition} | Delay: {delay_ms} | Response timeout")
+            self.log_step('response_timeout')
+            too_slow = visual.TextStim(self.win, text="Temps de réponse écoulé", color='red', height=0.1)
+            too_slow.draw()
+            self.win.flip()
+            core.wait(0.8)
+
+        # --- 5. ISI ---
+        isi = random.uniform(*self.stim_isi_range)
+        self.check_for_ttl()
+        core.wait(isi)
+        
+        self.log_step('trial_summary', condition=condition, delay_target=delay_ms, delay_actual=actual_delay, response_ms=response_ms)
+        return True
+
+    def build_trials(self, n_trials, training):
+        if training:
+            conditions = ['active']
+        else:
+            conditions = ['active', 'passive']
+
+        unique_types = [(c, d) for c in conditions for d in self.delays_ms]
+
+        n_full_repeats = n_trials // len(unique_types)
+        remainder = n_trials % len(unique_types)
+        trials = unique_types * n_full_repeats
+        if remainder > 0:
+            trials.extend(random.sample(unique_types, remainder))
+        random.shuffle(trials)
+
+        if training:
+            return trials
+
+        # --- Constraint Enforcement (Swap Method) ---
+        def is_conflict(trial_list, idx, candidate_trial):
+            cand_cond, cand_delay = candidate_trial
+            if idx >= 3:
+                if trial_list[idx-1][0] == trial_list[idx-2][0] == trial_list[idx-3][0] == cand_cond:
+                    return True
+            if idx >= 2:
+                if trial_list[idx-1][1] == trial_list[idx-2][1] == cand_delay:
+                    return True
+            return False
+
+        max_restarts = 10
+        for attempt in range(max_restarts):
+            try:
+                current_trials = trials[:]
+                random.shuffle(current_trials)
+                for i in range(n_trials):
+                    if is_conflict(current_trials, i, current_trials[i]):
+                        swapped = False
+                        for j in range(i + 1, n_trials):
+                            if not is_conflict(current_trials, i, current_trials[j]):
+                                current_trials[i], current_trials[j] = current_trials[j], current_trials[i]
+                                swapped = True
+                                break
+                        if not swapped:
+                            raise ValueError("Constraint conflict")
+                return current_trials
+            except ValueError:
+                continue
+        
         return trials
 
-    def run_trial_block(self, n_trials, block_name, phase_tag):
+    def run_trial_block(self, n_trials, block_name, phase_tag, feedback):
         self.current_phase = phase_tag 
-        print(f"--- Start {block_name} ({phase_tag}) ---")
-        self.log_step('block_start', block_name=block_name)
+        mode_str = "AVEC FEEDBACK" if feedback else "STANDARD"
         
-        trials = self.build_trials(n_trials)
+        # Ce print est géré dans run() pour être plus global, on log juste ici
+        self.log_step('block_start', block_name=block_name, feedback_mode=feedback)
+        
+        trials = self.build_trials(n_trials, feedback)
+        total_trials_in_block = len(trials)
+        
         for i, (cond, delay) in enumerate(trials, start=1):
-            self.run_trial(i, cond, delay)
+            self.run_trial(i, total_trials_in_block, cond, delay, feedback=feedback)
             
         self.log_step('block_end', block_name=block_name)
-        print(f"--- End {block_name} ---")
 
     # =========================================================================
     # DATA SAVING & CLEANUP
     # =========================================================================
 
     def save_results(self):
-        """ Robust CSV saving handling dynamic fieldnames (heterogeneous events) """
         if not self.enregistrer: return
         if self.is_data_saved: return 
 
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        fname = f"{self.nom}_GLOBAL_{self.session}_{ts}.csv"
+        # Utilisation du start_timestamp généré à l'init
+        fname = f"{self.nom}_GLOBAL_{self.session}_{self.start_timestamp}.csv"
         path = os.path.join(self.data_dir, fname)
         
-        print(f"Saving data: {len(self.global_records)} records...")
+        print(f"Sauvegarde des données : {len(self.global_records)} lignes")
 
         if not self.global_records:
             return
 
-        # 1. Identify all unique keys across all records
         all_keys = set()
         for rec in self.global_records:
             all_keys.update(rec.keys())
         
-        # 2. Order columns: Standard fields first, others alphabetical
         first_cols = ['time_s', 'phase', 'trial', 'event_type', 'participant', 'session']
         remaining_cols = sorted(list(all_keys - set(first_cols)))
         final_fieldnames = first_cols + remaining_cols
         
-        # 3. Write File
         try:
             with open(path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=final_fieldnames)
@@ -430,12 +509,11 @@ class TemporalJudgement:
                 writer.writerows(self.global_records)
             
             self.is_data_saved = True
-            print(f">> Saved successfully: {fname}")
+            print(f"- Sauvegarde réussie : {fname}")
             
         except Exception as e:
-            print(f"CRITICAL SAVE ERROR: {e}")
-            # Local Backup
-            with open(f"BACKUP_{ts}.csv", 'w', newline='') as f:
+            print(f"ERREUR CRITIQUE SAUVEGARDE : {e}")
+            with open(f"BACKUP_{self.start_timestamp}.csv", 'w', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=final_fieldnames)
                 writer.writeheader()
                 writer.writerows(self.global_records)
@@ -444,24 +522,39 @@ class TemporalJudgement:
         self.text_stim.text = "Fin de la session.\nMerci."
         self.text_stim.draw()
         self.win.flip()
-        core.wait(30.0)
+        core.wait(15)
         self.win.close()
         core.quit()
 
     def run(self):
-        # Main Execution Sequence
-        self.show_instructions()
-        self.wait_for_trigger()
+        """
+        Main execution logic.
+        """
         
-        self.show_resting_state(duration_s=150) 
-        
-        if self.run_type == 'base':
-            self.run_trial_block(60, "BLOC 1", phase_tag='run_01')
-            self.show_crisis_validation_window()
-            self.run_trial_block(self.n_trials, "BLOC 2", phase_tag='run_02')
+        if self.run_type == 'training':
+            print(f"Démarrage de l'ENTRAÎNEMENT ({self.n_trials_training} essais)")
+            self.wait_for_trigger()
+            self.show_resting_state(duration_s=10)
+            self.show_instructions() 
+            
+            self.run_trial_block(self.n_trials_training, block_name="TRAINING", phase_tag='training', feedback=True)
+
         else:
-            self.show_crisis_validation_window()
-            self.run_trial_block(self.n_trials, "BLOC UNIQUE", phase_tag='run_standard')
+            self.show_instructions()
+            self.wait_for_trigger()
+            
+            if self.run_type == 'base':
+                print(f"Démarrage de la BASE avec {self.n_trials_base} essais de type base et {self.n_trials_block} de type bloc")
+                self.show_resting_state(duration_s=150) 
+                self.run_trial_block(self.n_trials_base, "BASE", phase_tag='base', feedback=False)
+                self.show_crisis_validation_window()
+                self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
+            
+            else:
+                print(f"Démarrage du BLOC avec {self.n_trials_block} essais")
+                self.show_resting_state(duration_s=150) 
+                self.show_crisis_validation_window()
+                self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
         
         self.save_results()
         self.show_end_screen()

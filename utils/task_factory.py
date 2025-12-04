@@ -54,7 +54,9 @@ def create_task(config, win):
     if task_config == 'TemporalJudgement':
         return TemporalJudgement(
             **base_kwargs,
-            n_trials=config['n_trials'],
+            n_trials_base=config['n_trials_base'],
+            n_trials_block=config['n_trials_block'],
+            n_trials_training=config['n_trials_training'],
             session=config['session'],
             mode=config['mode'],
             run_type=config['run_type']

@@ -271,63 +271,87 @@ class ExperimentMenu(QMainWindow):
     def init_temporaljudgement_tab(self):
         layout = QVBoxLayout()
         self.temporaljudgement_tab.setLayout(layout)
-        
+
+        # ========== RUN TRAINING ==========
+        run_training_group = QGroupBox("Training Run")
+        run_training_layout = QVBoxLayout()
+
+        # --- Ajout du choix du nombre d’essais ---
+        training_trials_layout = QHBoxLayout()
+        training_trials_layout.addWidget(QLabel("Essais Training :"))
+        self.run_training_trials_spinbox = QSpinBox()
+        self.run_training_trials_spinbox.setMinimum(1)
+        self.run_training_trials_spinbox.setMaximum(200)
+        self.run_training_trials_spinbox.setValue(12)  # valeur par défaut
+        training_trials_layout.addWidget(self.run_training_trials_spinbox)
+        training_trials_layout.addStretch()
+        run_training_layout.addLayout(training_trials_layout)
+
+        # --- Bouton Lancer Training ---
+        btn_run_training = QPushButton("Lancer Training")
+        btn_run_training.clicked.connect(lambda: self.run_temporal_judgement(
+            run_type='training',
+            n_trials_base=self.run_training_trials_spinbox.value(),
+            run_number='00'
+        ))
+        run_training_layout.addWidget(btn_run_training)
+
+        run_training_group.setLayout(run_training_layout)
+        layout.addWidget(run_training_group)
+
         # ========== RUN BASE ==========
         run_base_group = QGroupBox("Run Base")
         run_base_layout = QVBoxLayout()
-        
+
+        # --- Essais pour la Base ---
         trials_base_layout = QHBoxLayout()
-        trials_base_layout.addWidget(QLabel("Nombre d'essais :"))
-        self.run_base_trials_spinbox = QSpinBox()
-        self.run_base_trials_spinbox.setMinimum(1)
-        self.run_base_trials_spinbox.setMaximum(120)
-        self.run_base_trials_spinbox.setValue(30)
-        trials_base_layout.addWidget(self.run_base_trials_spinbox)
+        trials_base_layout.addWidget(QLabel("Essais Base :"))
+        self.run_base_n_base_spinbox = QSpinBox()
+        self.run_base_n_base_spinbox.setMinimum(1)
+        self.run_base_n_base_spinbox.setMaximum(120)
+        self.run_base_n_base_spinbox.setValue(72)  # valeur par défaut pour Base
+        trials_base_layout.addWidget(self.run_base_n_base_spinbox)
         trials_base_layout.addStretch()
         run_base_layout.addLayout(trials_base_layout)
-        
-        btn_run_base = QPushButton("Lancer Run Base ")
-        btn_run_base.clicked.connect(lambda: self.run_temporal_judgement(run_type='base', n_trials=self.run_base_trials_spinbox.value(), run_number='00'))
+
+        # --- Essais pour le Block ---
+        trials_block_layout = QHBoxLayout()
+        trials_block_layout.addWidget(QLabel("Essais Block :"))
+        self.run_base_n_block_spinbox = QSpinBox()
+        self.run_base_n_block_spinbox.setMinimum(1)
+        self.run_base_n_block_spinbox.setMaximum(120)
+        self.run_base_n_block_spinbox.setValue(24)
+        trials_block_layout.addWidget(self.run_base_n_block_spinbox)
+        trials_block_layout.addStretch()
+        run_base_layout.addLayout(trials_block_layout)
+
+        # --- Bouton Lancer Base ---
+        btn_run_base = QPushButton("Lancer Run Base")
+        btn_run_base.clicked.connect(lambda: self.run_temporal_judgement(
+            run_type='base',
+            n_trials_base=self.run_base_n_base_spinbox.value(),
+            n_trials_block=self.run_base_n_block_spinbox.value(),
+            run_number='00'
+        ))
         run_base_layout.addWidget(btn_run_base)
-        
+
         run_base_group.setLayout(run_base_layout)
         layout.addWidget(run_base_group)
-        
-        # ========== RUN STANDARD ==========
-        run_standard_group = QGroupBox("Run Standard (20 essais)")
-        run_standard_layout = QVBoxLayout()
-        
-        run_number_layout = QHBoxLayout()
-        run_number_layout.addWidget(QLabel("Numéro de Run :"))
-        self.run_standard_spinbox = QSpinBox()
-        self.run_standard_spinbox.setMinimum(1)
-        self.run_standard_spinbox.setMaximum(99)
-        self.run_standard_spinbox.setValue(1)
-        run_number_layout.addWidget(self.run_standard_spinbox)
-        run_number_layout.addStretch()
-        run_standard_layout.addLayout(run_number_layout)
-        
-        btn_run_standard = QPushButton("Lancer Run Standard (30 essais)")
-        btn_run_standard.clicked.connect(lambda: self.run_temporal_judgement(run_type='standard', n_trials=20, run_number=str(self.run_standard_spinbox.value()).zfill(2)))
-        run_standard_layout.addWidget(btn_run_standard)
-        
-        run_standard_group.setLayout(run_standard_layout)
-        layout.addWidget(run_standard_group)
-        
+
         # ========== RUN PERSONNALISÉ ==========
         run_custom_group = QGroupBox("Run Personnalisé")
         run_custom_layout = QVBoxLayout()
-        
+
         trials_layout = QHBoxLayout()
         trials_layout.addWidget(QLabel("Nombre d'essais :"))
         self.run_custom_trials_spinbox = QSpinBox()
         self.run_custom_trials_spinbox.setMinimum(1)
         self.run_custom_trials_spinbox.setMaximum(500)
-        self.run_custom_trials_spinbox.setValue(20)
+        self.run_custom_trials_spinbox.setValue(24)
         trials_layout.addWidget(self.run_custom_trials_spinbox)
         trials_layout.addStretch()
         run_custom_layout.addLayout(trials_layout)
-        
+
         run_num_layout = QHBoxLayout()
         run_num_layout.addWidget(QLabel("Numéro de Run :"))
         self.run_custom_number_spinbox = QSpinBox()
@@ -337,14 +361,18 @@ class ExperimentMenu(QMainWindow):
         run_num_layout.addWidget(self.run_custom_number_spinbox)
         run_num_layout.addStretch()
         run_custom_layout.addLayout(run_num_layout)
-        
+
         btn_run_custom = QPushButton("Lancer Run Personnalisé")
-        btn_run_custom.clicked.connect(lambda: self.run_temporal_judgement(run_type='custom', n_trials=self.run_custom_trials_spinbox.value(), run_number=str(self.run_custom_number_spinbox.value()).zfill(2)))
+        btn_run_custom.clicked.connect(lambda: self.run_temporal_judgement(
+            run_type='custom',
+            n_trials_block=self.run_custom_trials_spinbox.value(),
+            run_number=str(self.run_custom_number_spinbox.value()).zfill(2)
+        ))
         run_custom_layout.addWidget(btn_run_custom)
-        
+
         run_custom_group.setLayout(run_custom_layout)
         layout.addWidget(run_custom_group)
-        
+
         layout.addStretch()
 
     def validate_config(self):
@@ -448,26 +476,40 @@ class ExperimentMenu(QMainWindow):
         self.close()
         QApplication.quit()
 
-    def run_temporal_judgement(self, run_type='base', n_trials=60, run_number='00'):
+    def run_temporal_judgement(
+        self,
+        run_type='base',
+        n_trials_base=72,
+        n_trials_block=24,
+        n_trials_training=12,
+        run_number='00'
+        ):
+        logger = get_logger()
         if not self.validate_config():
             return
-        
+
+        # ----- Log -----
+        logger.log(
+            f"Lancement Temporal Judgement : {run_type.upper()} "
+            f"(training={n_trials_training}, base={n_trials_base}, block={n_trials_block}, run={run_number})"
+        )
+
+        # ----- Configuration -----
         self.config.update({
             'tache': 'TemporalJudgement',
             'run_type': run_type,
-            'n_trials': n_trials,
             'session': run_number,
             'isi': (1500, 2500),
             'delays_ms': [200, 300, 400, 550, 700, 800],
-            'response_options': [200, 300, 400, 550, 700, 800, 1000, 1200]
+            'response_options': [200, 300, 400, 550, 700, 800, 1000, 1200],
+            'n_trials_base': n_trials_base,
+            'n_trials_block': n_trials_block,
+            'n_trials_training': n_trials_training,
         })
-        
-        logger = get_logger()
-        logger.log(f"Lancement Temporal Judgement : {run_type.upper()} - {n_trials} essais (Session {run_number}) | Mode: {self.config['mode']}")
-        
+
+        # ----- Fermeture -----
         self.close()
         QApplication.quit()
-
 
     def get_config(self):
         return self.config
