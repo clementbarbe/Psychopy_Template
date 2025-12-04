@@ -7,20 +7,59 @@ from utils.logger import get_logger
 import sys
 
 
+try:
+    from hardware.parport import ParPort
+    HARDWARE_LIB_AVAILABLE = True
+except ImportError:
+    HARDWARE_LIB_AVAILABLE = False
+    print("Warning: hardware.parport introuvable, mode simulation forcé.")
+
 class ExperimentMenu(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Configuration Expérimentale")
-        self.setFixedSize(950, 600)
+        self.setFixedSize(1200, 650) # Légèrement agrandi pour la nouvelle option
+        
+        # --- TEST DU MATÉRIEL DÈS LE LANCEMENT ---
+        self.hardware_present = False
+        self.check_hardware_availability()
+
         self.config = {
             'nom': '',
             'enregistrer': True,
             'fullscr': True,
             'screenid': 1,
             'monitor' : 'temp_monitor',
-            'colorspace' : 'rgb'
+            'colorspace' : 'rgb',
+            'parport_actif': False # Valeur par défaut
         }
         self.initUI()
+
+    def check_hardware_availability(self):
+        """Tente d'ouvrir le port pour voir s'il existe physiquement."""
+        if not HARDWARE_LIB_AVAILABLE:
+            self.hardware_present = False
+            return
+
+        try:
+            # On tente une connexion (adresse standard 0x378)
+            test_port = ParPort(address=0x378)
+            
+            if test_port.dummy_mode:
+                self.hardware_present = False
+                print("[MENU] Port parallèle NON détecté (Mode Dummy activé par la classe).")
+            else:
+                self.hardware_present = True
+                print("[MENU] Port parallèle détecté avec succès.")
+                
+            # Pas besoin de fermer explicitement ici car ParPort gère ça ou reste dispo
+            # mais si votre classe ParPort garde la ressource, le script principal
+            # la réinitialisera, ce qui est généralement toléré par PsychoPy.
+            
+        except Exception as e:
+            print(f"[MENU] Erreur lors du test matériel: {e}")
+            self.hardware_present = False
+
 
     def initUI(self):
         main_widget = QWidget()
@@ -48,6 +87,22 @@ class ExperimentMenu(QMainWindow):
         self.combo_mode.addItem("PC")
         self.combo_mode.addItem("fmri")
         self.combo_mode.setCurrentText("fmri")
+
+        self.chk_parport = QCheckBox("Triggers (LPT)")
+
+        if self.hardware_present:
+            # Si le matériel est là, on coche par défaut mais l'utilisateur peut décocher
+            self.chk_parport.setChecked(True)
+            self.chk_parport.setEnabled(True)
+            self.chk_parport.setToolTip("Port parallèle")
+            self.chk_parport.setStyleSheet("color: green; font-weight: bold;")
+        else:
+            # Si pas de matériel, on désactive et on décoche
+            self.chk_parport.setChecked(False)
+            self.chk_parport.setEnabled(False)
+            self.chk_parport.setText("Port parallèle")
+            self.chk_parport.setToolTip("Aucun port parallèle trouvé (0x378) ou driver manquant.")
+            self.chk_parport.setStyleSheet("color: gray;")
         
         layout.addWidget(lbl_name)
         layout.addWidget(self.txt_name)
@@ -56,6 +111,12 @@ class ExperimentMenu(QMainWindow):
         layout.addWidget(self.screenid)
         layout.addWidget(lbl_mode)
         layout.addWidget(self.combo_mode)
+
+        lbl_sep = QLabel("|")
+        lbl_sep.setStyleSheet("color: gray;")
+        layout.addWidget(lbl_sep)
+        layout.addWidget(self.chk_parport)
+
         layout.addStretch()
         group.setLayout(layout)
         parent_layout.addWidget(group)
@@ -381,6 +442,8 @@ class ExperimentMenu(QMainWindow):
         self.config['enregistrer'] = self.chk_save.isChecked()
         self.config['screenid'] = self.screenid.value() - 1
         self.config['mode'] = self.combo_mode.currentText()
+        self.config['parport_actif'] = self.chk_parport.isChecked()
+        
         if not is_valid_name(self.config['nom']):
             QMessageBox.warning(self, "Erreur", "Nom invalide")
             logger.warn("Validation échouée : nom participant invalide")
