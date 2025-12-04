@@ -243,9 +243,11 @@ class TemporalJudgement:
                 
                 keys = event.waitKeys(keyList=self.keys['responses'] + [self.keys['quit']])
                 idx_retry = self.keys['responses'].index(keys[0])
-                if idx_retry >= 4: 
-                    loop_crisis = False
-                    self.log_step('crisis_retry_decision', choice='no_retry')
+                
+                if idx_retry >= 4:  # Si l'utilisateur choisit NON [5-8]
+                    self.log_step('crisis_retry_decision', choice='no_retry_quit')
+                    # MODIFICATION ICI : On quitte le script au lieu de juste sortir de la boucle
+                    should_quit(self.win, quit=True)
                 else:
                     self.log_step('crisis_retry_decision', choice='retry')
             else:
