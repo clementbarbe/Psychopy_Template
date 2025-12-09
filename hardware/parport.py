@@ -6,7 +6,7 @@ class DummyParPort:
     def __init__(self, *args, **kwargs):
         pass 
 
-    def send_trigger(self, code, duration=0.01):
+    def send_trigger(self, code, duration=0.03):
         pass 
 
     def reset(self):
@@ -32,7 +32,7 @@ class ParPort:
             print(f"ATTENTION : Port parallèle non trouvé à {hex(address)}. Mode simulation activé.")
             self.dummy_mode = True
 
-    def send_trigger(self, code, duration=0.01):
+    def send_trigger(self, code, duration=0.03):
         """
         Envoie un trigger (code) et remet à 0 après duration secondes.
         """

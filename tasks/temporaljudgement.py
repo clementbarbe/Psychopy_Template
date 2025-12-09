@@ -13,7 +13,7 @@ class TemporalJudgement:
                  stim_isi_range=(1500, 2500),
                  data_dir='data/temporal_judgement',
                  port_address=0x378,
-                 parport_actif=False): 
+                 parport_actif=True): 
         
         # --- Experiment Parameters ---
         self.win = win
@@ -48,24 +48,26 @@ class TemporalJudgement:
             
         # --- DEFINITION DES CODES TRIGGERS ---
         self.codes = {
-            'start_exp': 255,
-            'rest_start': 100,
-            'rest_end': 101,
-            'trial_active': 10,
-            'trial_passive': 11,
-            'action_bulb': 20,
-            'bulb_on': 30,
-            'response_prompt': 35,
-            'response_given': 40,
-            'timeout': 99,
-            'crisis_prompt': 50,
-            'crisis_start': 51,
-            'crisis_end': 52,
-            'crisis_valid_prompt': 53,
-            'crisis_res_success': 54,
-            'crisis_res_fail': 55,
-            'crisis_retry_yes': 56,
-            'crisis_retry_no': 57
+            'start_exp': 255,      
+            'rest_start': 200,     
+            'rest_end': 201,       
+
+            'trial_active': 110,   
+            'trial_passive': 111,  
+            'action_bulb': 120,    
+            'bulb_on': 130,        
+            'response_prompt': 135,
+            'response_given': 140, 
+            'timeout': 199,        
+            
+            'crisis_prompt': 150,  
+            'crisis_start': 151,
+            'crisis_end': 152,
+            'crisis_valid_prompt': 153,
+            'crisis_res_success': 154,
+            'crisis_res_fail': 155,
+            'crisis_retry_yes': 156,
+            'crisis_retry_no': 157
         }
 
         # --- Global Logging System ---
@@ -97,7 +99,7 @@ class TemporalJudgement:
         self.response_options_text = visual.TextStim(self.win, text="1: 100 | 2: 200 | 3: 300 | 4: 400 | 5: 500 | 6: 600 | 7: 700 | 8: 800", color='white', height=0.05, pos=(0, 0.05))
         self.response_instr = visual.TextStim(self.win, text="Répondez avec les 8 boutons", color='white', height=0.045, pos=(0, -0.2))
 
-        self.underline_x_positions = [-0.35, -0.245, -0.145, -0.06, 0.06, 0.145, 0.245, 0.35]
+        self.underline_x_positions = [-0.35, -0.255, -0.15, -0.05, 0.055, 0.16, 0.26, 0.36]
         self.underline_y_line = -0.055
 
         self.response_key_to_ms = {key: ms for key, ms in zip(self.keys['responses'], self.response_values_ms)}

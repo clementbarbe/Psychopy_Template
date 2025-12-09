@@ -554,7 +554,6 @@ class ExperimentMenu(QMainWindow):
         # ----- Log -----
         logger.log(
             f"Lancement Temporal Judgement : {run_type.upper()} "
-            f"(training={n_trials_training}, base={n_trials_base}, block={n_trials_block}, run={run_number})"
         )
 
         # ----- Configuration -----

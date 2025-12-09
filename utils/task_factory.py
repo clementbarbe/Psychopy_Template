@@ -10,7 +10,8 @@ def create_task(config, win):
         'win': win,
         'nom': config['nom'],
         'enregistrer': config['enregistrer'],
-        'screenid': config['screenid']
+        'screenid': config['screenid'],
+        'parport_actif': config['parport_actif']
     }
 
     task_config = config['tache']
@@ -59,7 +60,7 @@ def create_task(config, win):
             n_trials_training=config['n_trials_training'],
             session=config['session'],
             mode=config['mode'],
-            run_type=config['run_type']
+            run_type=config['run_type']            
         )
     
     else:
