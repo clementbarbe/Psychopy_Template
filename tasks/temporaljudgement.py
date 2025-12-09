@@ -1,10 +1,11 @@
-from psychopy import visual, event, core, logging
+from psychopy import visual, event, core
+# On utilise le module logging standard de Python pour un formatage plus flexible que celui de PsychoPy
+import logging
 import random, csv, os
+import sys
 from datetime import datetime
 from utils.utils import should_quit
 from hardware.parport import ParPort, DummyParPort
-
-logging.console.setLevel(logging.ERROR)
 
 class TemporalJudgement:
     def __init__(self, win, nom, session='01', enregistrer=True, screenid=1, mode='fmri', run_type='base',
@@ -15,6 +16,9 @@ class TemporalJudgement:
                  port_address=0x378,
                  parport_actif=True): 
         
+        # --- Logger Setup ---
+        self._setup_logger()
+
         # --- Experiment Parameters ---
         self.win = win
         self.frame_rate = win.getActualFrameRate(nIdentical=10, nMaxFrames=100, threshold=1)
@@ -38,12 +42,12 @@ class TemporalJudgement:
         if parport_actif:
             try:
                 self.ParPort = ParPort(port_address)
-                print(f"Tentative connexion Port Parallèle {hex(port_address)}...")
+                self.logger.info(f"Port Parallèle connecté à {hex(port_address)}")
             except Exception as e:
-                print(f"Échec réel : {e}")
+                self.logger.error(f"Échec connexion Port Parallèle : {e}")
                 self.ParPort = DummyParPort()
         else:
-            print("Mode simulation (Dummy) activé par configuration.")
+            self.logger.warning("Mode simulation (Dummy) activé par configuration.")
             self.ParPort = DummyParPort()
             
         # --- DEFINITION DES CODES TRIGGERS ---
@@ -70,7 +74,7 @@ class TemporalJudgement:
             'crisis_retry_no': 157
         }
 
-        # --- Global Logging System ---
+        # --- Global Logging System (Data) ---
         self.global_records = [] 
         self.current_phase = 'setup'
         self.current_trial_idx = None 
@@ -108,8 +112,20 @@ class TemporalJudgement:
         self.task_clock = None 
         self.trigger_time = None
 
+    def _setup_logger(self):
+        """Configuration du logger pour la console."""
+        self.logger = logging.getLogger('TemporalTask')
+        self.logger.setLevel(logging.INFO)
+        # Éviter les doublons si on relance l'init
+        if not self.logger.handlers:
+            handler = logging.StreamHandler(sys.stdout)
+            # Format: [Heure] NIVEAU : Message
+            formatter = logging.Formatter('[%(asctime)s] %(levelname)-8s : %(message)s', datefmt='%H:%M:%S')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+
     # =========================================================================
-    # LOGGING & EVENT HANDLING (INCHANGÉ)
+    # LOGGING & EVENT HANDLING
     # =========================================================================
     
     def log_step(self, event_type, trial=None, **kwargs):
@@ -141,7 +157,7 @@ class TemporalJudgement:
             self.keys = {'action': 'y', 'responses': ['a', 'z', 'e', 'r', 'y', 'u', 'i', 'o'], 'trigger': 't', 'quit': 'escape'}
 
     # =========================================================================
-    # EXPERIMENT PHASES (TRIGGERS INCHANGÉS)
+    # EXPERIMENT PHASES
     # =========================================================================
 
     def show_instructions(self):
@@ -174,17 +190,17 @@ class TemporalJudgement:
         self.task_clock = core.Clock() 
         self.trigger_time = 0.0 
         self.log_step('trigger_received', info="T0 start")
-        print("- Trigger reçu - ")
+        self.logger.info("Trigger reçu (T0). Début de l'expérience.")
         
         # TRIGGER T=0
         self.ParPort.send_trigger(self.codes['start_exp'])
 
-    # --- RESTING STATE (TRIGGERS INCHANGÉS) ---
+    # --- RESTING STATE ---
     def show_resting_state(self, duration_s):
         self.current_phase = 'resting_state'
         self.current_trial_idx = None
         
-        print(f"=== Resting State ({duration_s}s) ===")
+        self.logger.info(f"=== Resting State Start ({duration_s}s) ===")
         self.log_step('resting_state_start', duration_expected=duration_s)
         
         # TRIGGER: Début Resting
@@ -200,7 +216,8 @@ class TemporalJudgement:
             elapsed = self.task_clock.getTime() - start_time
             
             if elapsed - last_print_time >= 15:
-                print(f"Resting State : {int(elapsed)}s / {duration_s}s")
+                # Log toutes les 15 secondes pour suivi
+                self.logger.info(f"[REST] {int(elapsed)}s / {duration_s}s")
                 last_print_time = elapsed
 
             self.check_for_ttl()
@@ -208,17 +225,17 @@ class TemporalJudgement:
                 should_quit(self.win, quit=True)
             core.wait(0.01)
 
-        print(f"Resting State :{duration_s}s / {duration_s}s")
+        self.logger.info(f"[REST] Terminé : {duration_s}s écoulées")
         
         # TRIGGER: Fin Resting
         self.ParPort.send_trigger(self.codes['rest_end'])
         self.log_step('resting_state_end')
 
-    # --- CRISIS SIMULATION & VALIDATION (TRIGGERS INCHANGÉS) ---
+    # --- CRISIS SIMULATION & VALIDATION ---
     def show_crisis_validation_window(self):
         self.current_phase = 'crisis_validation'
         self.current_trial_idx = None
-        print("=== Fenêtre de Validation de Crise ===")
+        self.logger.info("=== Entering Crisis Validation Window ===")
 
         loop_crisis = True
         while loop_crisis:
@@ -228,7 +245,7 @@ class TemporalJudgement:
             self.win.flip()
             self.log_step('crisis_prompt_start')
             
-            # TRIGGER : Affichage du prompt crise
+            # TRIGGER
             self.ParPort.send_trigger(self.codes['crisis_prompt'])
             
             event.clearEvents()
@@ -241,13 +258,10 @@ class TemporalJudgement:
 
             # 2. Crisis Active
             self.log_step('crisis_action_started', trigger_key=keys[0])
-            
-            # TRIGGER : Début de l'action Crise
             self.ParPort.send_trigger(self.codes['crisis_start'])
             
             self.fixation.draw()
             self.win.flip()
-            
             core.wait(0.5) 
             event.clearEvents()
             
@@ -258,7 +272,6 @@ class TemporalJudgement:
                 if keys and keys[0] == self.keys['quit']: should_quit(self.win, quit=True)
                 core.wait(0.01)
             
-            # TRIGGER : Fin de l'action Crise
             self.ParPort.send_trigger(self.codes['crisis_end'])
             self.log_step('crisis_action_ended', end_key=keys[0])
 
@@ -267,8 +280,6 @@ class TemporalJudgement:
             choice_text.draw()
             self.win.flip()
             self.log_step('crisis_validation_prompt')
-            
-            # TRIGGER : Demande de validation
             self.ParPort.send_trigger(self.codes['crisis_valid_prompt'])
             
             core.wait(0.2)
@@ -281,13 +292,13 @@ class TemporalJudgement:
             success = True if idx < 4 else False
             result_label = 'success' if success else 'failed'
             
-            # TRIGGER : Résultat choisi
             if success:
                 self.ParPort.send_trigger(self.codes['crisis_res_success'])
             else:
                 self.ParPort.send_trigger(self.codes['crisis_res_fail'])
             
             self.log_step('crisis_result_chosen', result=result_label, key=key)
+            self.logger.info(f"Crisis Outcome: {result_label.upper()}")
 
             # Feedback
             confirmation = visual.TextStim(self.win, text=f"Résultat : {result_label.upper()}", height=0.08)
@@ -311,13 +322,14 @@ class TemporalJudgement:
                 else: # OUI
                     self.log_step('crisis_retry_decision', choice='retry')
                     self.ParPort.send_trigger(self.codes['crisis_retry_yes'])
+                    self.logger.info("Crisis Retry Selected.")
             else:
                 loop_crisis = False
 
         self.log_step('crisis_phase_end')
 
     # =========================================================================
-    # CORE TRIAL LOGIC (TRIGGERS INCHANGÉS)
+    # CORE TRIAL LOGIC
     # =========================================================================
 
     def draw_lightbulb(self, base_color, bulb_on=False):
@@ -339,7 +351,6 @@ class TemporalJudgement:
         log_event = 'trial_start_feedback' if feedback else 'trial_start'
         self.log_step(log_event, condition=condition, requested_delay_ms=delay_ms)
         
-        # TRIGGER : Début Essai
         t_code = self.codes['trial_active'] if condition == 'active' else self.codes['trial_passive']
         self.ParPort.send_trigger(t_code)
 
@@ -364,7 +375,6 @@ class TemporalJudgement:
                 break
             core.wait(0.001)
 
-        # TRIGGER : Appui bouton "Allumer"
         self.ParPort.send_trigger(self.codes['action_bulb'])
 
         action_time = self.task_clock.getTime()
@@ -381,7 +391,6 @@ class TemporalJudgement:
 
         self.win.flip() # Bulb ON
         
-        # TRIGGER : Ampoule s'allume
         self.ParPort.send_trigger(self.codes['bulb_on'])
         
         bulb_on_time = self.task_clock.getTime()
@@ -397,7 +406,6 @@ class TemporalJudgement:
         t0_response = self.task_clock.getTime()
         self.log_step('response_prompt_shown')
         
-        # TRIGGER : Affichage question
         self.ParPort.send_trigger(self.codes['response_prompt'])
         
         self.response_title.draw()
@@ -416,7 +424,6 @@ class TemporalJudgement:
             resp_key, timestamp_key = resp_keys[0]
             if resp_key == self.keys['quit']: should_quit(self.win, quit=True)
             
-            # TRIGGER : Réponse donnée
             self.ParPort.send_trigger(self.codes['response_given'])
 
             rt = timestamp_key - t0_response
@@ -457,7 +464,6 @@ class TemporalJudgement:
                 core.wait(1.5) 
                 
             else:
-                # --- STANDARD (NO FEEDBACK) ---
                 underline = visual.Line(self.win, 
                                         start=(self.underline_x_positions[idx_user]-0.04, self.underline_y_line),
                                         end=(self.underline_x_positions[idx_user]+0.04, self.underline_y_line),
@@ -471,15 +477,15 @@ class TemporalJudgement:
 
             self.log_step('response_given', response_key=resp_key, response_choice_ms=response_ms, rt_s=rt, feedback_mode=feedback)
             
-            # --- CUSTOM PRINT FORMAT ---
-            fb_info = f" | FB: {feedback}" if feedback else ""
-            print(f"Trial {trial_index}/{total_trials} | Condition: {condition} | Delay: {delay_ms} | Answer: {response_ms}{fb_info}")
+            # --- LOG FORMAT ---
+            # Formatage aligné : Condition prend 7 caractères, les nombres sont alignés à droite
+            fb_str = f"| FB: {str(feedback):<5}" if feedback else ""
+            self.logger.info(f"Trial {trial_index:>2}/{total_trials:<2} | Condition: {condition:<7} | Delay: {delay_ms:>3}ms | Answer: {str(response_ms):>4}ms {fb_str} | RT: {rt:.3f}s {fb_str}")
 
         else:
-            # TRIGGER : Timeout
             self.ParPort.send_trigger(self.codes['timeout'])
             
-            print(f"Trial {trial_index}/{total_trials} | Condition: {condition} | Delay: {delay_ms} | Response timeout")
+            self.logger.warning(f"Trial {trial_index:>2}/{total_trials:<2} | Cond: {condition:<7} | Delay: {delay_ms:>3}ms | TIMEOUT")
             self.log_step('response_timeout')
             too_slow = visual.TextStim(self.win, text="Temps de réponse écoulé", color='red', height=0.1)
             too_slow.draw()
@@ -512,7 +518,6 @@ class TemporalJudgement:
         if training:
             return trials
 
-        # --- Constraint Enforcement (Swap Method) ---
         def is_conflict(trial_list, idx, candidate_trial):
             cand_cond, cand_delay = candidate_trial
             if idx >= 3:
@@ -547,6 +552,7 @@ class TemporalJudgement:
     def run_trial_block(self, n_trials, block_name, phase_tag, feedback):
         self.current_phase = phase_tag 
         self.log_step('block_start', block_name=block_name, feedback_mode=feedback)
+        self.logger.info(f"--- Block Start: {block_name} ({n_trials} trials) ---")
         
         trials = self.build_trials(n_trials, feedback)
         total_trials_in_block = len(trials)
@@ -555,9 +561,10 @@ class TemporalJudgement:
             self.run_trial(i, total_trials_in_block, cond, delay, feedback=feedback)
             
         self.log_step('block_end', block_name=block_name)
+        self.logger.info(f"--- Block End: {block_name} ---")
 
     # =========================================================================
-    # DATA SAVING & CLEANUP (INCHANGÉ)
+    # DATA SAVING & CLEANUP
     # =========================================================================
 
     def save_results(self):
@@ -567,7 +574,7 @@ class TemporalJudgement:
         fname = f"{self.nom}_session_{self.session}_start_{self.start_timestamp}.csv"
         path = os.path.join(self.data_dir, fname)
         
-        print(f"Sauvegarde des données : {len(self.global_records)} lignes")
+        self.logger.info(f"Sauvegarde en cours : {len(self.global_records)} événements...")
 
         if not self.global_records:
             return
@@ -587,10 +594,10 @@ class TemporalJudgement:
                 writer.writerows(self.global_records)
             
             self.is_data_saved = True
-            print(f"- Sauvegarde réussie : {fname}")
+            self.logger.info(f"Sauvegarde réussie : {fname}")
             
         except Exception as e:
-            print(f"ERREUR CRITIQUE SAUVEGARDE : {e}")
+            self.logger.critical(f"ERREUR CRITIQUE SAUVEGARDE : {e}")
             with open(f"BACKUP_{self.start_timestamp}.csv", 'w', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=final_fieldnames)
                 writer.writeheader()
@@ -609,7 +616,7 @@ class TemporalJudgement:
         Main execution logic.
         """
         if self.run_type == 'training':
-            print(f"Démarrage de l'ENTRAÎNEMENT ({self.n_trials_training} essais)")
+            self.logger.info(f"Lancement : ENTRAÎNEMENT ({self.n_trials_training} essais)")
             self.wait_for_trigger()
             self.show_resting_state(duration_s=10)
             self.show_instructions() 
@@ -618,13 +625,13 @@ class TemporalJudgement:
             self.show_instructions()
             self.wait_for_trigger()
             if self.run_type == 'base':
-                print(f"Démarrage de la BASE avec {self.n_trials_base} essais de type base et {self.n_trials_block} de type bloc")
+                self.logger.info(f"Lancement : BASE (Base:{self.n_trials_base} / Bloc:{self.n_trials_block})")
                 self.show_resting_state(duration_s=150) 
                 self.run_trial_block(self.n_trials_base, "BASE", phase_tag='base', feedback=False)
                 self.show_crisis_validation_window()
                 self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
             else:
-                print(f"Démarrage du BLOC avec {self.n_trials_block} essais")
+                self.logger.info(f"Lancement : BLOC ({self.n_trials_block} essais)")
                 self.show_resting_state(duration_s=150) 
                 self.show_crisis_validation_window()
                 self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
