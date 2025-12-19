@@ -1,5 +1,4 @@
 from psychopy import visual, event, core
-# On utilise le module logging standard de Python pour un formatage plus flexible que celui de PsychoPy
 import logging
 import random, csv, os
 import sys

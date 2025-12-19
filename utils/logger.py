@@ -242,7 +242,7 @@ class Logger:
             **kwargs: Keyword arguments for formatting
         """
         msg = self._format_message(formatted_str, *args, **kwargs)
-        print(self._colorize(msg, TermColors.KEYWORDS))
+        print(self._colorize(msg, TermColors.YELLOW))
     
     def warning(self, formatted_str: str, *args, **kwargs):
         """

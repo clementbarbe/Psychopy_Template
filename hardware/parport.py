@@ -1,7 +1,5 @@
 from psychopy import parallel, core
 
-# --- CLASSE FICTIVE (DÉSACTIVÉE PAR PARAMÈTRE) ---
-# Implémente la même interface que ParPort mais sans aucune opération I/O ni impression.
 class DummyParPort:
     def __init__(self, *args, **kwargs):
         pass 
@@ -27,9 +25,6 @@ class ParPort:
             self.port = parallel.ParallelPort(address)
             self.port.setData(0)
         except Exception as e:
-            # Conserve uniquement le message d'avertissement en cas d'échec
-            # Cela permet de savoir pourquoi la case est grisée dans le menu
-            print(f"ATTENTION : Port parallèle non trouvé à {hex(address)}. Mode simulation activé.")
             self.dummy_mode = True
 
     def send_trigger(self, code, duration=0.03):

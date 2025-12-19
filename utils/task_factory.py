@@ -4,6 +4,7 @@ from tasks.flanker import Flanker
 from tasks.stroop import Stroop
 from tasks.visualmemory import VisualMemory
 from tasks.temporaljudgement import TemporalJudgement
+from tasks.doorreward import DoorReward
 
 def create_task(config, win):
     base_kwargs = {
@@ -11,7 +12,7 @@ def create_task(config, win):
         'nom': config['nom'],
         'enregistrer': config['enregistrer'],
         'screenid': config['screenid'],
-        'parport_actif': config['parport_actif']
+        #'parport_actif': config['parport_actif']
     }
 
     task_config = config['tache']
@@ -63,6 +64,14 @@ def create_task(config, win):
             run_type=config['run_type']            
         )
     
+    elif task_config == 'DoorReward':
+        return DoorReward(
+            **base_kwargs,
+            session=config['session'],             # Ajouté pour le logging
+            n_trials=config['n_trials'],           # Vient du spin_reward_trials
+            reward_probability=config['reward_prob'], # Vient du spin_reward_prob
+            mode=config['mode']
+        )
     else:
         print("Tâche inconnue.")
         return None
