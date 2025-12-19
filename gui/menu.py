@@ -14,7 +14,10 @@ class ExperimentMenu(QMainWindow):
         self.setWindowTitle("Configuration Expérimentale")
         self.setFixedSize(1200, 650)
         
-        self.hardware_present = False
+        
+        self.hardware_present = False 
+        self.eyelink_present = False  
+
         self.check_hardware_availability()
 
         self.config = {
@@ -25,40 +28,47 @@ class ExperimentMenu(QMainWindow):
             'screenid': 1,
             'monitor' : 'temp_monitor',
             'colorspace' : 'rgb',
-            'parport_actif': False
+            'parport_actif': False,
+            'eyetracker_actif':False
         }
         self.initUI()
         
 
     def check_hardware_availability(self):
         """
-        Tente d'importer la librairie et d'ouvrir le port.
-        Gère l'absence de librairie ou l'échec de connexion en interne.
+        Vérifie la présence du Port Parallèle ET de la librairie Pylink.
         """
+        # --- CHECK PORT PARALLÈLE ---
         try:
-            # Import local : si ça échoue ici, on passe direct dans le except ImportError
+            # Simulation de l'import hardware
             from hardware.parport import ParPort
-            
-            # Tentative de connexion
+
             test_port = ParPort(address=0x378)
-            
             if test_port.dummy_mode:
                 self.hardware_present = False
-                # On log juste en info, car ParPort a déjà fait son print d'avertissement
-                logger.log("Mode Simulation (Dummy) détecté.")
+                logger.log("LPT: Mode Simulation (Dummy) détecté.")
             else:
                 self.hardware_present = True
-                logger.ok("Port parallèle détecté avec succès.")
+                logger.ok("LPT: Port parallèle détecté.")
                 
         except ImportError:
-            # Cas où le fichier hardware/parport.py n'existe pas ou dépendances manquantes
             self.hardware_present = False
-            logger.warn("Module 'hardware.parport' introuvable : Mode Simulation forcé.")
-            
+            logger.warn("LPT: Module introuvable -> Mode Simulation.")
         except Exception as e:
-            # Cas où la lib existe mais crashe à l'init (autre que le dummy mode)
             self.hardware_present = False
-            logger.warn(f"Erreur init matériel : {e}")
+            logger.warn(f"LPT: Erreur init -> {e}")
+
+        # --- CHECK EYELINK ---
+        try:
+            import pylink
+            self.eyelink_present = True
+            logger.ok("EyeLink: Librairie Pylink détectée.")
+        except ImportError:
+            self.eyelink_present = False
+            logger.warn("EyeLink: Librairie Pylink introuvable.")
+        except Exception as e:
+            self.eyelink_present = False
+            logger.warn(f"EyeLink: Erreur -> {e}")
 
     def initUI(self):
         main_widget = QWidget()
@@ -110,6 +120,19 @@ class ExperimentMenu(QMainWindow):
             self.chk_parport.setChecked(False)
             self.chk_parport.setEnabled(False)
             self.chk_parport.setStyleSheet("color: gray;")
+
+        # --- CHECKBOX EYETRACKER ---
+        self.chk_eyetracker = QCheckBox("EyeLink")
+        if self.eyelink_present:
+            # Par défaut décoché ou coché selon préférence
+            self.chk_eyetracker.setChecked(True) 
+            self.chk_eyetracker.setEnabled(True)
+            self.chk_eyetracker.setStyleSheet("color: blue; font-weight: bold;")
+        else:
+            self.chk_eyetracker.setChecked(False)
+            self.chk_eyetracker.setEnabled(False)
+            self.chk_eyetracker.setStyleSheet("color: gray;")
+            self.chk_eyetracker.setToolTip("Librairie 'pylink' manquante")
         
         # Ajout au layout
         layout.addWidget(lbl_name)
@@ -126,6 +149,11 @@ class ExperimentMenu(QMainWindow):
         lbl_sep.setStyleSheet("color: gray;")
         layout.addWidget(lbl_sep)
         layout.addWidget(self.chk_parport)
+
+        lbl_sep = QLabel("|")
+        lbl_sep.setStyleSheet("color: gray;")
+        layout.addWidget(lbl_sep)
+        layout.addWidget(self.chk_eyetracker)
 
         layout.addStretch()
         group.setLayout(layout)
@@ -483,6 +511,7 @@ class ExperimentMenu(QMainWindow):
         self.config['screenid'] = self.screenid.value() - 1
         self.config['mode'] = self.combo_mode.currentText()
         self.config['parport_actif'] = self.chk_parport.isChecked()
+        self.config['eyetracker_actif'] = self.chk_eyetracker.isChecked()
         
         if not is_valid_name(self.config['nom']):
             QMessageBox.warning(self, "Erreur", "Nom invalide")

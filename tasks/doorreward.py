@@ -4,40 +4,17 @@ import random, csv, os
 import sys
 import time
 
-# =============================================================================
-# UTILS & HARDWARE FALLBACK
-# =============================================================================
-try:
-    from utils.utils import should_quit, get_logger
-    from hardware.parport import ParPort, DummyParPort
-except ImportError:
-    def should_quit(win, quit=False):
-        if quit:
-            win.close()
-            core.quit()
-
-    def get_logger():
-        l = logging.getLogger('RewardTask')
-        if not l.handlers:
-            l.setLevel(logging.INFO)
-            h = logging.StreamHandler(sys.stdout)
-            h.setFormatter(logging.Formatter('[%(asctime)s] %(message)s'))
-            l.addHandler(h)
-        return l
-            
-    class DummyParPort:
-        def send_trigger(self, code):
-            print(f"[TRIGGER] {code}")
-            
-    class ParPort(DummyParPort):
-        def __init__(self, address=None, mode='dummy'): pass
+# On utilise tes modules customs
+from utils.hardware_manager import setup_hardware
+from utils.utils import should_quit
+from utils.logger import get_logger  # <--- On prend le VRAI logger stylé
 
 # =============================================================================
 # CLASSE DE TÂCHE
 # =============================================================================
 
 class DoorReward:
-    def __init__(self, win, nom, session, n_trials, reward_probability, mode, enregistrer=True, **kwargs):
+    def __init__(self, win, nom, session, n_trials, reward_probability, mode, enregistrer=True, eyetracker_actif=False, parport_actif=False, **kwargs):
         self.win = win
         self.nom = nom
         self.session = session
@@ -45,7 +22,9 @@ class DoorReward:
         self.reward_prob = reward_probability
         self.mode = mode
         self.enregistrer = enregistrer
-        
+        self.eyetracker_actif = eyetracker_actif
+        self.parport_actif = parport_actif
+
         # Gestion des chemins
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
         if os.path.basename(self.root_dir) == 'tasks':
@@ -60,8 +39,14 @@ class DoorReward:
         self.is_data_saved = False
         self.current_trial_idx = 0
         
-        self.logger = get_logger()
-        self.ParPort = ParPort(mode=mode) 
+        # --- LOGGER ---
+        self.logger = get_logger() # On récupère l'instance singleton
+        
+        # --- HARDWARE ---
+        self.ParPort, self.EyeTracker = setup_hardware(self.parport_actif, self.eyetracker_actif, win)
+        
+        # Init EyeTracker (Nom fichier: DR + 3 lettres + session -> DR_CLE01)
+        self.EyeTracker.initialize(file_name=f"DR_{nom[:3]}{session}")
         
         self.codes = {
             'start_exp': 10, 'rest_start': 20, 'rest_end': 21,
@@ -69,24 +54,14 @@ class DoorReward:
             'feedback_win': 60, 'feedback_neutral': 61, 'timeout': 99
         }
         if mode == "fmri":
-            self.keys = {
-                'choices': ['b', 'y', 'g'],
-                'trigger': 't',
-                'quit': 'escape'
-            }
-            
+            self.keys = {'choices': ['b', 'y', 'g'], 'trigger': 't', 'quit': 'escape'}
         else :
-            self.keys = {
-                'choices': ['a', 'z', 'e'],
-                'trigger': 't',
-                'quit': 'escape'
-            }
+            self.keys = {'choices': ['a', 'z', 'e'], 'trigger': 't', 'quit': 'escape'}
         
         self.task_clock = None 
         self._setup_visuals()
 
     def _setup_visuals(self):
-        # Chemins
         self.img_closed_path = os.path.join(self.root_dir, 'image', 'porte_ferme.png')
         self.img_open_path = os.path.join(self.root_dir, 'image', 'porte_ouverte.png')
 
@@ -95,21 +70,11 @@ class DoorReward:
         self.doors_open_stim = []   
         
         for pos in self.door_positions:
-            # Porte FERMÉE
-            stim_closed = visual.ImageStim(
-                self.win, image=self.img_closed_path, 
-                pos=pos, size=(0.3, 0.6), interpolate=True
-            )
+            stim_closed = visual.ImageStim(self.win, image=self.img_closed_path, pos=pos, size=(0.3, 0.6), interpolate=True)
             self.doors_closed_stim.append(stim_closed)
-            
-            # Porte OUVERTE
-            stim_open = visual.ImageStim(
-                self.win, image=self.img_open_path, 
-                pos=pos, size=(0.3, 0.6), interpolate=True
-            )
+            stim_open = visual.ImageStim(self.win, image=self.img_open_path, pos=pos, size=(0.3, 0.6), interpolate=True)
             self.doors_open_stim.append(stim_open)
 
-        # Textes
         self.feedback_stim = visual.TextStim(self.win, text="", height=0.15, bold=True)
         self.score_stim = visual.TextStim(self.win, text="Total: 0 €", pos=(0, -0.6), height=0.06)
         self.fixation = visual.TextStim(self.win, text='+', color='white', height=0.12)
@@ -118,6 +83,10 @@ class DoorReward:
     def log_step(self, event_type, **kwargs):
         self.is_data_saved = False
         current_time = self.task_clock.getTime() if self.task_clock else 0.0
+        
+        # On envoie aussi un message dans le fichier EDF (EyeLink) pour marquer l'event
+        self.EyeTracker.send_message(f"TRIAL {self.current_trial_idx} {event_type}")
+        
         entry = {
             'participant': self.nom,
             'session': self.session,
@@ -151,10 +120,16 @@ class DoorReward:
         self.text_instr.draw()
         self.win.flip()
         
+        self.logger.log("Waiting for trigger...")
         event.waitKeys(keyList=[self.keys['trigger']])
+        
         self.task_clock = core.Clock() 
         self.ParPort.send_trigger(self.codes['start_exp'])
         self.log_step('experiment_start')
+        
+        self.EyeTracker.start_recording()
+        self.EyeTracker.send_message("START_EXP")
+        self.logger.ok("Experiment Started")
 
     def show_resting_state(self, duration_s):
         self.ParPort.send_trigger(self.codes['rest_start'])
@@ -172,7 +147,7 @@ class DoorReward:
     def run_trial(self, trial_num):
         self.current_trial_idx = trial_num
         
-        # --- 1. AFFICHAGE PORTES FERMÉES ---
+        # --- 1. PORTES FERMEES ---
         for d in self.doors_closed_stim:
             d.opacity = 1
             d.draw()
@@ -195,6 +170,7 @@ class DoorReward:
             self.feedback_stim.pos = (0, 0)
             self.feedback_stim.draw()
             self.win.flip()
+            self.logger.warn(f"Trial {trial_num} Timeout")
             core.wait(1.0)
             return
 
@@ -207,74 +183,61 @@ class DoorReward:
         self.ParPort.send_trigger(self.codes['choice_made'])
         self.log_step('response_made', key=key_pressed, choice_idx=choice_idx, rt=rt)
 
-        # --- 3. OUVERTURE IMMÉDIATE (SANS TEXTE) ---
-        # On redessine tout de suite : la porte choisie ouverte, les autres fermées
+        # --- 3. OUVERTURE ---
         for i in range(3):
-            if i == choice_idx:
-                self.doors_open_stim[i].draw() # Porte ouverte
-            else:
-                self.doors_closed_stim[i].draw() # Portes fermées
-        
+            if i == choice_idx: self.doors_open_stim[i].draw()
+            else: self.doors_closed_stim[i].draw()
         self.score_stim.draw()
         self.win.flip()
-        
-        # On envoie un trigger pour dire "la porte s'est ouverte"
         self.ParPort.send_trigger(self.codes['door_open'])
         
-        # --- 4. PETIT DÉLAI (Délai avant l'apparition du chiffre) ---
-        # C'est ici que ça "attend" avec la porte ouverte mais sans le chiffre
-        delay_before_text = random.uniform(1.0, 2.0) 
-        core.wait(delay_before_text)
+        core.wait(random.uniform(1.0, 2.0))
 
-        # --- 5. RÉSULTAT (GAIN) ---
+        # --- 5. RESULTAT ---
         is_win = random.random() < self.reward_prob
-        
+        gain = 10 if is_win else 0
         if is_win:
-            gain = 10 
             self.total_gain += gain
-            msg = "+ 10 €"
-            col = 'lime'
-            trig = self.codes['feedback_win']
+            msg, col, trig = "+ 10 €", 'lime', self.codes['feedback_win']
         else:
-            gain = 0
-            msg = "0 €"
-            col = 'grey'
-            trig = self.codes['feedback_neutral']
+            msg, col, trig = "0 €", 'grey', self.codes['feedback_neutral']
 
         self.ParPort.send_trigger(trig)
         self.log_step('feedback_outcome', is_win=is_win, gain=gain)
 
-        # On redessine la scène (Porte ouverte) + LE TEXTE maintenant
+        # Dessin Feedback
         for i in range(3):
-            if i == choice_idx:
-                self.doors_open_stim[i].draw()
-            else:
-                self.doors_closed_stim[i].draw()
-            
+            if i == choice_idx: self.doors_open_stim[i].draw()
+            else: self.doors_closed_stim[i].draw()
         self.feedback_stim.text = msg
         self.feedback_stim.color = col
         self.feedback_stim.pos = (self.door_positions[choice_idx][0], 0) 
         self.feedback_stim.draw()
-        
         self.score_stim.text = f"Total: {self.total_gain} €"
         self.score_stim.draw()
-        
         self.win.flip()
         
-        # Temps de lecture du résultat
+        # --- CUSTOM LOGGING (LE VOILA) ---
+        outcome_str = "WIN " if is_win else "LOSE"
+        self.logger.log(
+            f"Trial {trial_num:>2}/{self.n_trials:<2} | "
+            f"Choice: Door {choice_idx+1} ({key_pressed.upper()}) | "
+            f"RT: {rt:.3f}s | "
+            f"Outcome: {outcome_str:<4} ({msg:>6}) | "
+            f"Total: {self.total_gain:>3} €"
+        )
+        
         core.wait(1.5)
 
         # --- 6. ITI ---
         self.fixation.draw()
         self.win.flip()
-        iti = random.uniform(1.0, 2.5)
-        core.wait(iti)
+        core.wait(random.uniform(1.0, 2.5))
 
     def save_results(self):
         if self.is_data_saved: return 
 
         output_dir = os.path.join(self.data_dir, "doorreward")
-        
         os.makedirs(output_dir, exist_ok=True)
 
         fname = f"{self.nom}_Reward_Sess{self.session}_{self.start_timestamp}.csv"
@@ -283,21 +246,18 @@ class DoorReward:
         try:
             with open(path, 'w', newline='', encoding='utf-8') as f:
                 if self.global_records:
-                    all_keys = set()
-                    for r in self.global_records:
-                        all_keys.update(r.keys())
-
-                    fieldnames = sorted(list(all_keys))
-                    
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    all_keys = set().union(*(r.keys() for r in self.global_records))
+                    writer = csv.DictWriter(f, fieldnames=sorted(list(all_keys)))
                     writer.writeheader()
                     writer.writerows(self.global_records)
             
             self.is_data_saved = True
-            print(f"Sauvegarde réussie : {path}")
+            # Log vert pour succès
+            self.logger.ok(f"Sauvegarde réussie : {path}")
             
         except Exception as e:
-            print(f"Erreur sauvegarde : {e}")
+            # Log rouge pour erreur
+            self.logger.err(f"Erreur sauvegarde : {e}")
 
     def run(self):
         self.show_instructions()
@@ -305,10 +265,15 @@ class DoorReward:
         for i in range(1, self.n_trials + 1):
             self.run_trial(i)
         self.show_resting_state(2.0)
+        
+        self.EyeTracker.stop_recording()
+        self.EyeTracker.send_message("END_EXP")
+        # On passe le dossier de sortie pour récupérer le EDF
+        self.EyeTracker.close_and_transfer_data(os.path.join(self.data_dir, "doorreward"))
+        
         self.save_results()
         
         end_txt = visual.TextStim(self.win, text=f"Fini !\nGains totaux : {self.total_gain} €", height=0.1)
         end_txt.draw()
         self.win.flip()
         core.wait(2.0)
-
