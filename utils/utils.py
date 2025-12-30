@@ -28,15 +28,26 @@ def _check_float(val, min=None, max=None):
 def is_valid_number(val, type='int', min=None, max=None):
     return is_valid_number_map[type](val, min, max)
 
-def should_quit(win=None):
+def should_quit(win=None, quit=False):
     """
-    Vérifie si l'utilisateur a appuyé sur 'escape' ou 'q' pour quitter.
-    Si oui, ferme la fenêtre PsychoPy (si fournie) et quitte proprement.
+    Vérifie si on doit quitter.
+    - Si quit=True est passé en argument : on quitte immédiatement (forcé).
+    - Sinon : on vérifie si l'utilisateur a appuyé sur 'escape' ou 'q'.
     """
-    keys = event.getKeys(keyList=['escape', 'q'])
-    if keys:
+    # Si l'ordre de quitter n'est pas explicite, on vérifie le clavier
+    if not quit:
+        keys = event.getKeys(keyList=['escape', 'q'])
+        if keys:
+            quit = True
+
+    # Si on doit quitter (soit forcé, soit détecté ci-dessus)
+    if quit:
         if win:
-            win.close()
-        core.quit()
+            try:
+                win.close()
+            except:
+                pass # Évite une erreur si la fenêtre est déjà fermée
+        core.quit() # Lève SystemExit (attrapé par le 'finally' du main)
         return True
+    
     return False

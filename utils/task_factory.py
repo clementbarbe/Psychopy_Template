@@ -67,9 +67,9 @@ def create_task(config, win):
     elif task_config == 'DoorReward':
         return DoorReward(
             **base_kwargs,
-            session=config['session'],             # Ajouté pour le logging
-            n_trials=config['n_trials'],           # Vient du spin_reward_trials
-            reward_probability=config['reward_prob'], # Vient du spin_reward_prob
+            session=config['session'],        
+            n_trials=config['n_trials'],          
+            reward_probability=config['reward_prob'], 
             mode=config['mode'],
             eyetracker_actif=config['eyetracker_actif'],
             parport_actif=config['parport_actif']

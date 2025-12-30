@@ -339,9 +339,6 @@ class TemporalJudgement:
         bulb.draw()
 
     def run_trial(self, trial_index, total_trials, condition, delay_ms, feedback=False):
-        """
-        Unified trial function.
-        """
         should_quit(self.win)
         self.current_trial_idx = trial_index
         base_color = '#00FF00' if condition == 'active' else '#FF0000'
@@ -351,11 +348,13 @@ class TemporalJudgement:
         self.log_step(log_event, condition=condition, requested_delay_ms=delay_ms)
         
         t_code = self.codes['trial_active'] if condition == 'active' else self.codes['trial_passive']
-        self.ParPort.send_trigger(t_code)
-
+        
+        # OPTIMISATION 1 : Trigger après le setup graphique ou via callOnFlip si critique
+        # Ici c'est moins grave, mais on peut le faire juste avant le flip
         self.fixation.draw()
+        self.ParPort.send_trigger(t_code) 
         self.win.flip()
-        self.check_for_ttl()
+        
         core.wait(0.5)
 
         # Show Bulb OFF
@@ -365,34 +364,46 @@ class TemporalJudgement:
         # --- 2. Wait for Action (Keypress) ---
         event.clearEvents(eventType='keyboard')
         keys = []
-        wait_start = self.task_clock.getTime()
+        
         while not keys:
-            self.check_for_ttl()
             keys = event.getKeys(keyList=[self.keys['action'], self.keys['quit']])
             if keys:
                 if keys[0] == self.keys['quit']: should_quit(self.win, quit=True)
+                
+                # --- CORRECTION MAJEURE ICI ---
+                # 1. On capture le temps IMMEDIATEMENT (C'est le temps réel physique)
+                action_time = self.task_clock.getTime()
+                wait_start = action_time # juste pour le log
+                
+                # 2. On envoie le trigger APRES avoir sécurisé le temps
+                self.ParPort.send_trigger(self.codes['action_bulb'])
                 break
-            core.wait(0.001)
+            core.wait(0.0005) 
 
-        self.ParPort.send_trigger(self.codes['action_bulb'])
-
-        action_time = self.task_clock.getTime()
-        self.log_step('action_performed', action_key=keys[0], rt_prep=action_time-wait_start)
+        self.log_step('action_performed', action_key=keys[0], rt_prep=0) # rt_prep approximatif ici
 
         # --- 3. Precise Timing Logic ---
+        # Maintenant action_time est "pur", donc target_light_time sera exact
         target_light_time = action_time + (delay_ms / 1000.0)
         
         self.draw_lightbulb(base_color=base_color, bulb_on=True)
         
-        frame_tolerance_s = (0.75*1/self.frame_rate)
+        # Attente précise
+        frame_tolerance_s = (0.75 * 1/self.frame_rate)
         while self.task_clock.getTime() < (target_light_time - frame_tolerance_s):
             core.wait(0.001) 
 
-        self.win.flip() # Bulb ON
+        # --- CORRECTION MAJEURE 2 (Synchronisation écran) ---
+        # On demande à PsychoPy d'envoyer le trigger EXACTEMENT quand la carte graphique
+        # affiche l'image (au prochain rafraîchissement vertical), sans bloquer Python avant.
+        self.win.callOnFlip(self.ParPort.send_trigger, self.codes['bulb_on'])
         
-        self.ParPort.send_trigger(self.codes['bulb_on'])
+        # Le flip se fait
+        self.win.flip() 
         
+        # On relève le temps tout de suite après le flip (le trigger est parti en parallèle grâce à callOnFlip)
         bulb_on_time = self.task_clock.getTime()
+        
         actual_delay = (bulb_on_time - action_time) * 1000
         self.log_step('bulb_lit', actual_delay_ms=actual_delay, error_ms=actual_delay-delay_ms)
         
@@ -401,6 +412,8 @@ class TemporalJudgement:
         core.wait(wait_duration)
         self.win.flip()
 
+        # ... (La suite "Response Collection" reste inchangée) ...
+        # (Copiez-collez la fin de votre fonction originale ici)
         # --- 4. Response Collection ---
         t0_response = self.task_clock.getTime()
         self.log_step('response_prompt_shown')
@@ -414,7 +427,7 @@ class TemporalJudgement:
 
         event.clearEvents(eventType='keyboard')
         resp_keys = event.waitKeys(maxWait=5.0, keyList=self.keys['responses'] + [self.keys['quit']], timeStamped=self.task_clock)
-        self.check_for_ttl()
+        # On peut remettre le check ici si on veut, c'est une phase lente
 
         rt = None
         response_ms = None
@@ -476,14 +489,11 @@ class TemporalJudgement:
 
             self.log_step('response_given', response_key=resp_key, response_choice_ms=response_ms, rt_s=rt, feedback_mode=feedback)
             
-            # --- LOG FORMAT ---
-            # Formatage aligné : Condition prend 7 caractères, les nombres sont alignés à droite
             fb_str = f"| FB: {str(feedback):<5}" if feedback else ""
             self.logger.info(f"Trial {trial_index:>2}/{total_trials:<2} | Condition: {condition:<7} | Delay: {delay_ms:>3}ms | Answer: {str(response_ms):>4}ms {fb_str} | RT: {rt:.3f}s {fb_str}")
 
         else:
             self.ParPort.send_trigger(self.codes['timeout'])
-            
             self.logger.warning(f"Trial {trial_index:>2}/{total_trials:<2} | Cond: {condition:<7} | Delay: {delay_ms:>3}ms | TIMEOUT")
             self.log_step('response_timeout')
             too_slow = visual.TextStim(self.win, text="Temps de réponse écoulé", color='red', height=0.1)
@@ -491,7 +501,6 @@ class TemporalJudgement:
             self.win.flip()
             core.wait(0.8)
 
-        # --- 5. ISI ---
         isi = random.uniform(*self.stim_isi_range)
         self.check_for_ttl()
         core.wait(isi)
@@ -612,28 +621,47 @@ class TemporalJudgement:
 
     def run(self):
         """
-        Main execution logic.
+        Main execution logic sécurisée.
         """
-        if self.run_type == 'training':
-            self.logger.info(f"Lancement : ENTRAÎNEMENT ({self.n_trials_training} essais)")
-            self.wait_for_trigger()
-            self.show_resting_state(duration_s=10)
-            self.show_instructions() 
-            self.run_trial_block(self.n_trials_training, block_name="TRAINING", phase_tag='training', feedback=True)
-        else:
-            self.show_instructions()
-            self.wait_for_trigger()
-            if self.run_type == 'base':
-                self.logger.info(f"Lancement : BASE (Base:{self.n_trials_base} / Bloc:{self.n_trials_block})")
-                self.show_resting_state(duration_s=150) 
-                self.run_trial_block(self.n_trials_base, "BASE", phase_tag='base', feedback=False)
-                self.show_crisis_validation_window()
-                self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
+        # Drapeau pour savoir si l'expérience est allée au bout
+        finished_naturally = False 
+
+        try:
+            if self.run_type == 'training':
+                self.logger.info(f"Lancement : ENTRAÎNEMENT ({self.n_trials_training} essais)")
+                self.wait_for_trigger()
+                self.show_resting_state(duration_s=10)
+                self.show_instructions() 
+                self.run_trial_block(self.n_trials_training, block_name="TRAINING", phase_tag='training', feedback=True)
             else:
-                self.logger.info(f"Lancement : BLOC ({self.n_trials_block} essais)")
-                self.show_resting_state(duration_s=150) 
-                self.show_crisis_validation_window()
-                self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
-        
-        self.save_results()
-        self.show_end_screen()
+                self.show_instructions()
+                self.wait_for_trigger()
+                if self.run_type == 'base':
+                    self.logger.info(f"Lancement : BASE (Base:{self.n_trials_base} / Bloc:{self.n_trials_block})")
+                    self.show_resting_state(duration_s=150) 
+                    self.run_trial_block(self.n_trials_base, "BASE", phase_tag='base', feedback=False)
+                    self.show_crisis_validation_window()
+                    self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
+                else:
+                    self.logger.info(f"Lancement : BLOC ({self.n_trials_block} essais)")
+                    self.show_resting_state(duration_s=150) 
+                    self.show_crisis_validation_window()
+                    self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
+            
+            finished_naturally = True
+
+        except (KeyboardInterrupt, SystemExit):
+            self.logger.warning("Interruption manuelle détectée (Echap/Quit).")
+            
+        except Exception as e:
+            self.logger.critical(f"PLANTAGE INATTENDU : {e}")
+            raise e
+            
+        finally:
+            self.logger.info("Tentative de sauvegarde d'urgence...")
+            self.save_results()
+
+            if finished_naturally:
+                self.show_end_screen()
+            else:
+                self.logger.info("Fermeture immédiate (Interruption).")
