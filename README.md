@@ -6,17 +6,21 @@ Il fournit une interface PyQt6 permettant de sélectionner et paramétrer rapide
 ## Fonctionnalités principales
 
 - Configuration générale :
-  - Nom du participant
+  - Informations participant
   - Numéro d’écran / mode plein écran
   - Mode d'entrée (PC ou fMRI)
-  - Option d’enregistrement des données  
+  - Option d’enregistrement des données
+  - Synchronisation electrophy et eyetracker
+
 - Interface claire avec onglets pour chaque tâche :
+    
   - **NBack**
   - **DigitSpan**
   - **Flanker**
   - **Stroop**
   - **Visual Memory**
-  - **Temporal Judgement**  
-- Chaque tâche propose des paramètres ajustables (durées, ISI, nombre d’essais, etc.).
+  - **Temporal Judgement**
+  - **Door Reward**  
+- Chaque tâche propose des paramètres ajustables.
 - Le menu renvoie une configuration complète à PsychoPy pour lancer la tâche.
 
