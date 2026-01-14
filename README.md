@@ -15,10 +15,8 @@ Il fournit une interface PyQt6 permettant de sélectionner et paramétrer rapide
 - Interface claire avec onglets pour chaque tâche :
     
   - **NBack**
-  - **DigitSpan**
   - **Flanker**
   - **Stroop**
-  - **Visual Memory**
   - **Temporal Judgement**
   - **Door Reward**  
 - Chaque tâche propose des paramètres ajustables.
