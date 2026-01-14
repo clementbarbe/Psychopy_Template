@@ -1,12 +1,7 @@
 """
 Flanker Task (fMRI / Behavioral)
 -------------------------------
-Tâche de type Eriksen Flanker, compatible IRM.
-
-- Synchronisation sur trigger scanner
-- Mesure RT précise (clock globale)
-- Log événementiel structuré
-- API compatible menu existant
+Tâche de type Flanker, compatible IRM.
 
 Auteur : [Clément BARBE / CENIR]
 """
@@ -20,6 +15,7 @@ from datetime import datetime
 
 from psychopy import visual, event, core
 from utils.utils import should_quit
+from utils.hardware_manager import setup_hardware
 
 
 class Flanker:
@@ -256,6 +252,8 @@ class Flanker:
 
         finally:
             self.save_results()
+
+        return
 
     # ======================================================================
     # SAVE

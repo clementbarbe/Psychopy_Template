@@ -1,50 +1,50 @@
 # main.py
 import sys
-import signal # Nécessaire pour le Ctrl+C
+import signal 
 from PyQt6.QtWidgets import QApplication
-
-# --- MODIF 1 : Ne PAS importer psychopy ou task_factory ici ---
-# On importe seulement les modules légers
 from gui.menu import ExperimentMenu
 from utils.logger import get_logger
 
-# On laisse Python gérer le Ctrl+C par défaut (sinon Qt le bloque)
+
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 def show_menu_and_get_config(app, last_config=None):
     """
-    Affiche le menu. Si l'utilisateur clique sur la croix, retourne None.
+    Instantiates and displays the PyQt Experiment Menu.
+    Blocks execution until the user validates a configuration or closes the window.
+    
+    Returns:
+        dict: Configuration dictionary if validated.
+        None: If the user closed the window (Exit).
     """
     menu = ExperimentMenu(last_config)
     menu.show()
     
-    # Lance la boucle d'événement.
-    # Elle s'arrêtera quand menu.close() sera appelé (via run ou croix)
+    # Start Qt Event Loop. Execution halts here until menu.close() is called.
     app.exec()
     
-    # Récupère la config
+    # Retrieve configuration state before destroying the object
     config = menu.get_config()
     
+    # Clean up UI resources immediately
     menu.deleteLater()
     app.processEvents() 
-    # -------------------------------------
     
     return config
 
 def run_task_logic(config):
     """
-    Logique PsychoPy. 
-    Les imports sont faits ICI pour éviter le conflit avec PyQt au démarrage.
+    Logique PsychoPy sécurisée pour permettre le retour au menu.
     """
     logger = get_logger()
     
+    # Imports différés (inchangés)
     from psychopy import visual, core, logging
-    from utils.task_factory import create_task # Déplacé ici aussi
+    from utils.task_factory import create_task 
     
-    # Config logging PsychoPy
     logging.console.setLevel(logging.ERROR)
     
-    # Création fenêtre PsychoPy
+    # Création fenêtre
     win = visual.Window(
         fullscr=config['fullscr'],
         color='black',
@@ -56,17 +56,19 @@ def run_task_logic(config):
     task = create_task(config, win)
     
     if not task:
-        logger.err(f"Échec de création de la tâche '{config.get('tache')}'")
+        logger.err(f"Factory Error: Could not create task '{config.get('tache')}'")
         win.close()
         return
 
     try:
-        # Petit temps pour s'assurer que le focus est pris
         win.flip()
         core.wait(0.5) 
 
+        # --- Lancement de la tâche ---
+       
         task.run()
         
+        # --- Sauvegarde ---
         if config.get('enregistrer', True):
             if hasattr(task, 'save_results'):
                 task.save_results()
@@ -74,50 +76,54 @@ def run_task_logic(config):
                 task.save_data()
                 
     except Exception as e:
-        logger.err(f"Erreur pendant l'exécution de la tâche : {e}")
+        logger.err(f"Runtime Error during task execution: {e}")
         import traceback
         traceback.print_exc()
+        
     finally:
-        # Fermeture propre de la fenêtre PsychoPy
+        # --- CRUCIAL : On ferme juste la fenêtre ---
+   
         win.close()
-        # On tente de libérer les ressources Pyglet/GLFW
-        core.quit() 
 
 def main():
+    """
+    Application Entry Point.
+    Manages the lifecycle loop: Menu -> Task -> Menu.
+    """
     logger = get_logger()
     
-    # Création de l'app QT
+    # Initialize the centralized Qt Application
     app = QApplication(sys.argv)
    
     last_config = None
 
     while True:
-        # 1. Affichage Menu
-        # Si l'utilisateur clique sur la croix, config sera None
+        # 1. Configuration Phase (PyQt)
         config = show_menu_and_get_config(app, last_config)
 
-        # Si croix ou annuler
+        # Exit Condition: User closed the menu window directly
         if not config:
-            logger.log("Fermeture demandée par l'utilisateur (Menu).")
-            break # Sort du While True
+            logger.log("User requested exit via Menu.")
+            break 
         
-        # 2. Exécution Tâche
+        # 2. Execution Phase (PsychoPy)
         try:
-            logger.log(f"Lancement de {config['tache']}...")
+            logger.log(f"Launching task: {config.get('tache', 'Unknown')}...")
             
-            # On lance la tâche PsychoPy
             run_task_logic(config)
             
-            # Sauvegarde pour la prochaine boucle
+            # Cache config for the next iteration (convenience for the user)
             last_config = config
+            
         except Exception as e:
-            logger.err(f"Erreur fatale dans run_task : {e}")
+            logger.err(f"Fatal error in main loop: {e}")
+            # We continue the loop to allow the user to retry or fix settings
             pass
 
-    # --- MODIF 4 : Sortie propre ---
-    logger.log("Arrêt du programme.")
-    app.quit() # Tue l'instance QT
-    sys.exit(0) # Tue le processus Python
+    # --- GRACEFUL SHUTDOWN ---
+    logger.log("Application shutdown.")
+    app.quit() 
+    sys.exit(0)
 
 if __name__ == '__main__':
     main()

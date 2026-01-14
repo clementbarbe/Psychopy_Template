@@ -1,15 +1,9 @@
 """
 N-Back Task (fMRI / Behavioral) 
 -------------------------------------------------------
-Ce script exécute une tâche de mémoire de travail (N-Back) sous PsychoPy.
+Executes a Working Memory task (N-Back) using PsychoPy.
 
-  - Timing "Non-Slip" pour éviter la dérive temporelle cumulative.
-  - Séparation stricte de la phase Stimulus et de la phase ISI.
-  - Modularity N-Level robuste.
-  - Optimisation des appels de garbage collection.
-
-Auteur : [BARBE Clément / CENIR]
-Date : Janvier 2026
+Auteur : [Clément BARBE / CENIR]
 """
 
 import logging
@@ -20,26 +14,18 @@ import sys
 import gc
 from datetime import datetime
 from psychopy import visual, event, core
-from utils.utils import should_quit
+from utils.hardware_manager import setup_hardware
 
-# --- Hardware Simulation ---
-try:
-    from hardware.parport import ParPort, DummyParPort
-except ImportError:
-    class DummyParPort:
-        def send_trigger(self, code): pass
-    ParPort = DummyParPort
 
 class NBack:
     """
-    Contrôleur principal de la tâche N-Back.
-    Mise à jour : Logs temps réel + Fix Sauvegarde CSV.
+    Main Controller for the N-Back Task.
     """
 
     def __init__(self, win, nom, session='01', enregistrer=True, 
                  N=2, n_trials=30, target_ratio=0.3,
                  stim_dur=0.5, isi=1.5, data_dir='data/nback',
-                 port_address=0x378, parport_actif=True, screenid=1, **kwargs):
+                 port_address=0x378, parport_actif=False,eyetracker_actif=False, screenid=1, **kwargs):
         
         self._setup_logger()
         self.win = win
@@ -47,30 +33,31 @@ class NBack:
         self.session = session
         self.enregistrer = enregistrer
         
+        # Task Parameters
         self.N = int(N)
         self.n_trials = int(n_trials)
         self.target_ratio = float(target_ratio)
         self.stim_dur = float(stim_dur)
         self.isi = float(isi)
         
+        # Data & Time
         self.data_dir = data_dir
         os.makedirs(self.data_dir, exist_ok=True)
         self.start_timestamp = datetime.now().strftime('%Y%m%d_%H%M')
 
-        # Hardware setup
-        self.parport_actif = parport_actif
-        if parport_actif:
-            try:
-                from hardware.parport import ParPort
-                self.ParPort = ParPort()
-            except:
-                self.ParPort = DummyParPort()
-        else:
-            self.ParPort = DummyParPort()
+        # Control Flags
+        self.quit_req = False # Flag to break loops gracefully
+
+        # Hardware Setup
+        self.ParPort, self.EyeTracker = setup_hardware(
+            parport_actif=parport_actif, 
+            eyetracker_actif=eyetracker_actif,
+            window=win
+        )
             
         self.codes = {'start_exp': 255, 'stim_target': 10, 'stim_nontarget': 20, 'response': 128, 'end_exp': 250}
         
-        # Stimuli
+        # Stimuli Initialization
         self.stim_text = visual.TextStim(self.win, text='', color='white', height=0.25, font='Arial')
         self.fixation = visual.TextStim(self.win, text='+', color='white', height=0.1)
         self.instr_text = visual.TextStim(self.win, text='', color='white', height=0.06, wrapWidth=1.8)
@@ -78,14 +65,15 @@ class NBack:
         self.global_records = []
         self.sequence = []
         self.task_clock = core.Clock()
-        self.keys = {'target': 'space', 'trigger': 't', 'quit': 'escape'}
+        
+        # Input definition (Added 'q' for quit)
+        self.keys = {'target': 'space', 'trigger': 't', 'quit': ['escape', 'q']}
 
     def _setup_logger(self):
         self.logger = logging.getLogger('NBackTask')
         self.logger.setLevel(logging.INFO)
         if not self.logger.handlers:
             handler = logging.StreamHandler(sys.stdout)
-            # Format simplifié pour la console pour éviter d'être trop verbeux avec le timestamp à chaque ligne
             handler.setFormatter(logging.Formatter('%(message)s'))
             self.logger.addHandler(handler)
 
@@ -96,16 +84,20 @@ class NBack:
         self.global_records.append(entry)
 
     def generate_sequence(self):
-        # ... (Identique à la version précédente) ...
+        """Generates the N-Back letter sequence with controlled target ratio."""
         possible_letters = list("BCDFGHJKLMNPQRSTVXZ")
         seq = []
         is_target = []
+        
+        # buffer for the first N items (cannot be targets)
         for i in range(self.N):
             char = random.choice(possible_letters)
-            if i > 0 and char == seq[-1]: char = random.choice([l for l in possible_letters if l != seq[-1]])
+            if i > 0 and char == seq[-1]: 
+                char = random.choice([l for l in possible_letters if l != seq[-1]])
             seq.append(char)
             is_target.append(False)
         
+        # Remaining trials
         remaining = self.n_trials - self.N
         n_targets = int(remaining * self.target_ratio)
         conditions = [True] * n_targets + [False] * (remaining - n_targets)
@@ -120,13 +112,18 @@ class NBack:
                 pool = [l for l in possible_letters if l != target_letter]
                 seq.append(random.choice(pool))
                 is_target.append(False)
+                
         self.sequence = list(zip(seq, is_target))
-        # On remet le log standard avec timestamp juste pour l'init
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] INFO: Séquence générée (N={self.N}, Trials={len(self.sequence)})")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] INFO: Sequence generated (N={self.N}, Trials={len(self.sequence)})")
 
     def run_trial(self, trial_idx, letter, is_target, trial_start_global_time):
-        should_quit(self.win)
-        gc.disable()
+        """
+        Executes a single trial. 
+        Returns immediately if quit_req is detected.
+        """
+        if self.quit_req: return
+
+        gc.disable() # Pause GC to avoid frame drops
 
         trig = self.codes['stim_target'] if is_target else self.codes['stim_nontarget']
         self.stim_text.text = letter
@@ -134,84 +131,79 @@ class NBack:
         t_stim_end = trial_start_global_time + self.stim_dur
         t_trial_end = trial_start_global_time + self.stim_dur + self.isi
 
-        # 1. Attente précise du début théorique (Spin-lock)
+        # 1. Spin-lock wait for precise onset
         while self.task_clock.getTime() < trial_start_global_time: 
             pass
 
-        # 2. FLIP SYNCHRONISÉ
+        # 2. Synchronized Flip & Trigger
         self.win.callOnFlip(self.ParPort.send_trigger, trig)
         self.stim_text.draw()
         self.win.flip() 
         
-        # --- FIX CRITIQUE ---
-        # On capture le temps MAINTENANT selon l'horloge de la tâche (relatif au Reset)
-        # au lieu de prendre le timestamp absolu de win.flip()
         onset_real = self.task_clock.getTime() 
-        
-        # Le delay est maintenant la différence entre le temps réel mesuré et le temps théorique
         delay_ms = (onset_real - trial_start_global_time) * 1000
-
         self.log_step('stimulus_onset', trial=trial_idx, letter=letter, is_target=is_target, delay_ms=delay_ms)
 
         response_data = {'key': None, 'rt': None, 'acc': None, 'sdt': None}
         
-        # Phase Stimulus
+        # 3. Stimulus Phase
         while self.task_clock.getTime() < t_stim_end:
-            # Optimisation: on vérifie les touches SEULEMENT si pas encore répondu
+            if self.quit_req: break
             if response_data['key'] is None:
-                # timeStamped=self.task_clock assure que 't' est compatible avec 'onset_real'
-                keys = event.getKeys(keyList=[self.keys['target'], self.keys['quit']], timeStamped=self.task_clock)
+                keys = event.getKeys(keyList=[self.keys['target']] + self.keys['quit'], timeStamped=self.task_clock)
                 if keys: self._process_response(keys[0], onset_real, is_target, response_data)
         
-        # Phase ISI (Croix)
-        self.fixation.draw()
-        self.win.flip()
+        # 4. ISI Phase (Fixation)
+        if not self.quit_req:
+            self.fixation.draw()
+            self.win.flip()
         
         while self.task_clock.getTime() < t_trial_end:
+            if self.quit_req: break
             if response_data['key'] is None:
-                keys = event.getKeys(keyList=[self.keys['target'], self.keys['quit']], timeStamped=self.task_clock)
+                keys = event.getKeys(keyList=[self.keys['target']] + self.keys['quit'], timeStamped=self.task_clock)
                 if keys: self._process_response(keys[0], onset_real, is_target, response_data)
             core.wait(0.001)
 
-        # Fin de l'essai : Traitement de la non-réponse
-        if response_data['key'] is None:
-            acc = 0 if is_target else 1
-            sdt = "MISS" if is_target else "CR"
-            self.log_step('response_none', trial=trial_idx, sdt=sdt, accuracy=acc)
-            
-            rt_display = 0.0
-            fb_str = "MISS" if is_target else "OK"
-            col_fb = "\033[91m" if is_target else "\033[92m" 
-        else:
-            rt_display = response_data['rt']
-            sdt = response_data['sdt']
-            is_correct = response_data['acc'] == 1
-            fb_str = sdt
-            col_fb = "\033[92m" if is_correct else "\033[91m"
+        # 5. Logging & Feedback
+        if not self.quit_req:
+            if response_data['key'] is None:
+                acc = 0 if is_target else 1
+                sdt = "MISS" if is_target else "CR"
+                self.log_step('response_none', trial=trial_idx, sdt=sdt, accuracy=acc)
+                rt_display = 0.0
+                fb_str = "MISS" if is_target else "OK"
+                col_fb = "\033[91m" if is_target else "\033[92m" 
+            else:
+                rt_display = response_data['rt']
+                sdt = response_data['sdt']
+                is_correct = response_data['acc'] == 1
+                fb_str = sdt
+                col_fb = "\033[92m" if is_correct else "\033[91m"
 
-        gc.enable()
-        
-        # LOGGER CORRIGÉ
-        cond_str = "TARGET" if is_target else "______"
-        reset_col = "\033[0m"
-        
-        # Le delay devrait maintenant être entre 0.0ms et 16.0ms (durée d'une frame à 60Hz)
-        log_msg = (f"Trial {trial_idx:>2}/{self.n_trials:<2} | "
-                   f"Condition: {cond_str:<7} | "
-                   f"Delay: {delay_ms:>5.1f}ms | "
-                   f"RT: {rt_display:.3f}s {col_fb}{fb_str:<4}{reset_col}")
-        
-        self.logger.info(log_msg)
+            gc.enable()
+            
+            cond_str = "TARGET" if is_target else "______"
+            reset_col = "\033[0m"
+            log_msg = (f"Trial {trial_idx:>2}/{self.n_trials:<2} | "
+                    f"Condition: {cond_str:<7} | "
+                    f"Delay: {delay_ms:>5.1f}ms | "
+                    f"RT: {rt_display:.3f}s {col_fb}{fb_str:<4}{reset_col}")
+            self.logger.info(log_msg)
 
     def _process_response(self, key_tuple, onset_time, is_target, data):
         k, t = key_tuple
-        if k == self.keys['quit']: should_quit(self.win, quit=True)
         
+        # Check for Quit
+        if k in self.keys['quit']:
+            self.quit_req = True
+            return
+
         self.ParPort.send_trigger(self.codes['response'])
         rt = t - onset_time
         
         acc = 1 if is_target else 0
-        sdt = "HIT" if is_target else "FA" # False Alarm
+        sdt = "HIT" if is_target else "FA"
         
         data['key'] = k
         data['rt'] = rt
@@ -221,13 +213,13 @@ class NBack:
         self.log_step('response_given', key=k, rt=rt, sdt=sdt, accuracy=acc)
 
     def show_instructions(self):
-        self.instr_text.text = (f"Tâche {self.N}-BACK\n\nAppuyez si la lettre est identique\nà {self.N} étapes avant.\n\nAppuyez pour commencer.")
+        self.instr_text.text = (f"{self.N}-BACK TASK\n\nPress if the letter matches\nthe one {self.N} steps back.\n\nPress to start.")
         self.instr_text.draw()
         self.win.flip()
         event.waitKeys()
 
     def wait_for_trigger(self):
-        self.instr_text.text = f"Attente Trigger IRM ('{self.keys['trigger']}')"
+        self.instr_text.text = f"Waiting for MRI Trigger ('{self.keys['trigger']}')"
         self.instr_text.draw()
         self.win.flip()
         event.waitKeys(keyList=[self.keys['trigger']])
@@ -236,19 +228,16 @@ class NBack:
         self.log_step('experiment_start')
 
     def save_data(self):
-        """
-        CORRECTION DU BUG DICTWRITER
-        """
+        """Saves session data to CSV."""
         if self.enregistrer and self.global_records:
             fname = f"nback_{self.nom}_S{self.session}_{self.start_timestamp}.csv"
             path = os.path.join(self.data_dir, fname)
             try:
-                # 1. On récupère TOUTES les clés uniques présentes dans l'historique
+                # Dynamic column ordering
                 all_keys = set()
                 for rec in self.global_records:
                     all_keys.update(rec.keys())
                 
-                # 2. On trie pour avoir les colonnes importantes au début
                 priority_cols = ['participant', 'session', 'N_level', 'trial', 'event_type', 'time_s', 'letter', 'is_target', 'rt', 'sdt', 'accuracy']
                 fieldnames = [k for k in priority_cols if k in all_keys] + [k for k in all_keys if k not in priority_cols]
 
@@ -257,11 +246,10 @@ class NBack:
                     w.writeheader()
                     w.writerows(self.global_records)
                 
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] SUCCESS: Données sauvegardées dans {path}")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] SUCCESS: Data saved to {path}")
 
             except Exception as e:
-                print(f"ERROR CRITIQUE SAVE: {e}")
-                # Backup de secours en raw
+                print(f"CRITICAL SAVE ERROR: {e}")
                 with open(path + ".bak", "w") as f:
                     f.write(str(self.global_records))
 
@@ -274,17 +262,26 @@ class NBack:
             self.fixation.draw()
             self.win.flip()
             
-            # Start avec 2s de pré-rest
+            # Start with 2s pre-rest
             next_trial_time = 2.0 
-            while self.task_clock.getTime() < next_trial_time: core.wait(0.001)
+            while self.task_clock.getTime() < next_trial_time: 
+                core.wait(0.001)
             
+            # Main Loop
             for i, (l, t) in enumerate(self.sequence):
+                if self.quit_req:
+                    self.logger.warning("Abort requested by user.")
+                    break
+                
                 self.run_trial(i+1, l, t, next_trial_time)
                 next_trial_time += (self.stim_dur + self.isi)
                 
-            self.fixation.draw()
-            self.win.flip()
-            core.wait(2.0)
+            if not self.quit_req:
+                self.fixation.draw()
+                self.win.flip()
+                core.wait(2.0)
             
         finally:
             self.save_data()
+
+        return

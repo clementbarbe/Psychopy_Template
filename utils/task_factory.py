@@ -1,8 +1,6 @@
 from tasks.nback import NBack
-from tasks.digitspan import DigitSpan
 from tasks.flanker import Flanker
 from tasks.stroop import Stroop
-from tasks.visualmemory import VisualMemory
 from tasks.temporaljudgement import TemporalJudgement
 from tasks.doorreward import DoorReward
 
@@ -25,12 +23,7 @@ def create_task(config, win):
             isi=config['isi'],
             stim_dur=config['stim_dur']
         )
-    elif task_config == 'DigitSpan':
-        return DigitSpan(
-            **base_kwargs,
-            digit_dur=config['digit_dur'],
-            isi=config['isi']
-        )
+    
     elif task_config == 'Flanker':
         return Flanker(
             **base_kwargs,
@@ -48,12 +41,6 @@ def create_task(config, win):
             n_choices=config['n_choices'],
             go_nogo=config['go_nogo']
         )
-    
-    if task_config == 'VisualMemory':
-        return VisualMemory(
-            **base_kwargs,  
-            
-        )   
     
     if task_config == 'TemporalJudgement':
         return TemporalJudgement(
