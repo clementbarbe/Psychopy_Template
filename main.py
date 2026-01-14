@@ -25,9 +25,6 @@ def show_menu_and_get_config(app, last_config=None):
     # Récupère la config
     config = menu.get_config()
     
-    # --- NETTOYAGE CRITIQUE POUR LINUX ---
-    # On force la destruction du widget pour libérer les ressources graphiques
-    # avant que PsychoPy ne tente de prendre la main.
     menu.deleteLater()
     app.processEvents() 
     # -------------------------------------
@@ -41,9 +38,6 @@ def run_task_logic(config):
     """
     logger = get_logger()
     
-    # --- MODIF 2 : IMPORTS TARDIFS (LAZY IMPORTS) ---
-    # On importe PsychoPy uniquement maintenant. 
-    # Cela évite le 'Core Dumped' au lancement car Qt a fini son travail.
     from psychopy import visual, core, logging
     from utils.task_factory import create_task # Déplacé ici aussi
     
@@ -94,11 +88,7 @@ def main():
     
     # Création de l'app QT
     app = QApplication(sys.argv)
-    
-    # --- MODIF 3 : On enlève le setQuitOnLastWindowClosed(False) ---
-    # Si on le laisse, l'app ne veut jamais mourir. 
-    # On veut gérer la boucle nous-mêmes.
-    
+   
     last_config = None
 
     while True:
@@ -120,7 +110,6 @@ def main():
             
             # Sauvegarde pour la prochaine boucle
             last_config = config
-            
         except Exception as e:
             logger.err(f"Erreur fatale dans run_task : {e}")
             pass

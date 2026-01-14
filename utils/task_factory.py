@@ -39,13 +39,15 @@ def create_task(config, win):
             isi=config['isi']
         )
     
-    if task_config == 'Stroop':
+    elif task_config == 'Stroop':
         return Stroop(
             **base_kwargs,
-            n_trials=config['n_trials'],
-            isi=config['isi'],
-            stim_dur=config['stim_dur']
-        )   
+            n_trials=config['n_trials'],      
+            session=config['session'],        
+            mode=config['mode'],
+            n_choices=config['n_choices'],
+            go_nogo=config['go_nogo']
+        )
     
     if task_config == 'VisualMemory':
         return VisualMemory(

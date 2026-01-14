@@ -1,79 +1,116 @@
-from psychopy import visual, event, core
+"""
+Temporal Judgement Task (fMRI / Behavioral)
+-------------------------------------------
+Ce script exécute une tâche de jugement temporel sous PsychoPy.
+Il gère :
+  - L'affichage des stimuli (ampoules, barres de réponse).
+  - La synchronisation précise avec les triggers IRM (Port Parallèle).
+  - La sauvegarde des données comportementales.
+
+Auteur : [Clément BARBE/ CENIR]
+Date de mise en prod : Décembre 2025
+"""
+
 import logging
-import random, csv, os
+import random
+import csv
+import os
 import sys
+import gc  # <--- IMPORT CRUCIAL POUR LE CONTROLE MEMOIRE
 from datetime import datetime
+
+# --- PsychoPy Imports ---
+from psychopy import visual, event, core
+
+# --- Local Imports ---
 from utils.utils import should_quit
 from hardware.parport import ParPort, DummyParPort
 
 class TemporalJudgement:
+    """
+    Classe principale gérant la logique de l'expérience.
+    """
+
     def __init__(self, win, nom, session='01', enregistrer=True, screenid=1, mode='fmri', run_type='base',
-                 n_trials_base=72, n_trials_block=24, n_trials_training=12, delays_ms=(200, 300, 400, 500, 600, 700),
+                 n_trials_base=72, n_trials_block=24, n_trials_training=12, 
+                 delays_ms=(200, 300, 400, 500, 600, 700),
                  response_options=(100, 200, 300, 400, 500, 600, 700, 800),
                  stim_isi_range=(1500, 2500),
                  data_dir='data/temporal_judgement',
                  port_address=0x378,
                  parport_actif=True): 
         
-        # --- Logger Setup ---
+        # ---------------------------------------------------------------------
+        # 1. INITIALISATION DU LOGGER & SYSTÈME
+        # ---------------------------------------------------------------------
         self._setup_logger()
-
-        # --- Experiment Parameters ---
         self.win = win
+        
+        # Calcul précis du taux de rafraîchissement
         self.frame_rate = win.getActualFrameRate(nIdentical=10, nMaxFrames=100, threshold=1)
+        if self.frame_rate is None:
+            self.frame_rate = 60.0
+            self.logger.warning("Frame rate non détecté, valeur par défaut : 60.0 Hz")
+
         self.start_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
+        # ---------------------------------------------------------------------
+        # 2. GESTION DE LA RÉSOLUTION 
+        # ---------------------------------------------------------------------
+        if self.win.size[1] > 1200:
+            self.pixel_scale = 2.0
+            self.logger.info(f"Écran Haute Résolution détecté ({self.win.size}). Échelle des traits : x2.0")
+        else:
+            self.pixel_scale = 1.0
+            self.logger.info(f"Écran Standard détecté ({self.win.size}). Échelle des traits : x1.0")
+        
+        self.x_spacing_scale = 1.14
+
+        # ---------------------------------------------------------------------
+        # 3. PARAMÈTRES EXPÉRIMENTAUX
+        # ---------------------------------------------------------------------
         self.nom = nom
         self.session = session
         self.enregistrer = enregistrer
         self.screenid = screenid
         self.run_type = run_type
         self.mode = mode
+        
         self.n_trials_base = n_trials_base
         self.n_trials_block = n_trials_block
         self.n_trials_training = n_trials_training
+        
         self.delays_ms = list(delays_ms)
         self.response_values_ms = list(response_options)
-        self.stim_isi_range = (stim_isi_range[0]/1000 , stim_isi_range[1]/1000 )
+        self.stim_isi_range = (stim_isi_range[0]/1000.0, stim_isi_range[1]/1000.0)
+        
         self.data_dir = data_dir
         os.makedirs(self.data_dir, exist_ok=True)
 
+        # ---------------------------------------------------------------------
+        # 4. CONFIGURATION DU PORT PARALLÈLE
+        # ---------------------------------------------------------------------
         if parport_actif:
             try:
                 self.ParPort = ParPort(port_address)
-                self.logger.info(f"Port Parallèle connecté à {hex(port_address)}")
+                self.logger.info(f"Port Parallèle initialisé à l'adresse {hex(port_address)}")
             except Exception as e:
-                self.logger.error(f"Échec connexion Port Parallèle : {e}")
+                self.logger.error(f"Erreur Port Parallèle : {e} -> Passage en mode Dummy.")
                 self.ParPort = DummyParPort()
         else:
-            self.logger.warning("Mode simulation (Dummy) activé par configuration.")
+            self.logger.info("Mode Simulation (Dummy ParPort) activé.")
             self.ParPort = DummyParPort()
             
-        # --- DEFINITION DES CODES TRIGGERS ---
         self.codes = {
-            'start_exp': 255,      
-            'rest_start': 200,     
-            'rest_end': 201,       
-
-            'trial_active': 110,   
-            'trial_passive': 111,  
-            'action_bulb': 120,    
-            'bulb_on': 130,        
-            'response_prompt': 135,
-            'response_given': 140, 
-            'timeout': 199,        
-            
-            'crisis_prompt': 150,  
-            'crisis_start': 151,
-            'crisis_end': 152,
-            'crisis_valid_prompt': 153,
-            'crisis_res_success': 154,
-            'crisis_res_fail': 155,
-            'crisis_retry_yes': 156,
-            'crisis_retry_no': 157
+            'start_exp': 255, 'rest_start': 200, 'rest_end': 201, 
+            'trial_active': 110, 'trial_passive': 111, 
+            'action_bulb': 120, 'bulb_on': 130, 
+            'response_prompt': 135, 'response_given': 140, 'timeout': 199, 
+            'crisis_prompt': 150, 'crisis_start': 151, 'crisis_end': 152, 
+            'crisis_valid_prompt': 153, 'crisis_res_success': 154, 'crisis_res_fail': 155, 
+            'crisis_retry_yes': 156, 'crisis_retry_no': 157
         }
 
-        # --- Global Logging System (Data) ---
         self.global_records = [] 
         self.current_phase = 'setup'
         self.current_trial_idx = None 
@@ -81,7 +118,9 @@ class TemporalJudgement:
 
         self._setup_keys()
 
-        # --- Visual Stimuli Setup (INCHANGÉ) ---
+        # ---------------------------------------------------------------------
+        # 5. CRÉATION DES STIMULI VISUELS
+        # ---------------------------------------------------------------------
         img_path = 'image'
         bulb_size = (0.45 * 0.9, 0.9 * 0.9)
         bulb_pos = (0.0, 0.0)
@@ -90,6 +129,7 @@ class TemporalJudgement:
             self.bulb_off_img = visual.ImageStim(self.win, image=os.path.join(img_path, 'bulbof.png'), size=bulb_size, pos=bulb_pos)
             self.bulb_on_img = visual.ImageStim(self.win, image=os.path.join(img_path, 'bulbon.png'), size=bulb_size, pos=bulb_pos)
         else:
+            self.logger.warning("Images non trouvées, utilisation de cercles.")
             self.bulb_off_img = visual.Circle(self.win, radius=0.2, fillColor='grey')
             self.bulb_on_img = visual.Circle(self.win, radius=0.2, fillColor='yellow')
 
@@ -97,36 +137,35 @@ class TemporalJudgement:
         self.text_stim = visual.TextStim(self.win, color='white', height=0.05, wrapWidth=1.5)
         self.fixation = visual.TextStim(self.win, text='+', color='white', height=0.12)
 
-        # Response screen elements
         self.response_title = visual.TextStim(self.win, text="Combien de ms avez-vous perçu ?", color='white', height=0.05, pos=(0, 0.3))
         self.response_options_text = visual.TextStim(self.win, text="1: 100 | 2: 200 | 3: 300 | 4: 400 | 5: 500 | 6: 600 | 7: 700 | 8: 800", color='white', height=0.05, pos=(0, 0.05))
         self.response_instr = visual.TextStim(self.win, text="Répondez avec les 8 boutons", color='white', height=0.045, pos=(0, -0.2))
 
-        self.underline_x_positions = [-0.35, -0.255, -0.15, -0.05, 0.055, 0.16, 0.26, 0.36]
+        # Positions normalisées
+        base_positions = [-0.35, -0.255, -0.15, -0.05, 0.055, 0.16, 0.26, 0.36]
+        self.underline_x_positions = [x * self.x_spacing_scale for x in base_positions]
         self.underline_y_line = -0.055
 
         self.response_key_to_ms = {key: ms for key, ms in zip(self.keys['responses'], self.response_values_ms)}
-
-        # Timing Clocks
+        
         self.task_clock = None 
         self.trigger_time = None
 
     def _setup_logger(self):
-        """Configuration du logger pour la console."""
         self.logger = logging.getLogger('TemporalTask')
         self.logger.setLevel(logging.INFO)
-        # Éviter les doublons si on relance l'init
         if not self.logger.handlers:
             handler = logging.StreamHandler(sys.stdout)
-            # Format: [Heure] NIVEAU : Message
             formatter = logging.Formatter('[%(asctime)s] %(levelname)-8s : %(message)s', datefmt='%H:%M:%S')
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
 
-    # =========================================================================
-    # LOGGING & EVENT HANDLING
-    # =========================================================================
-    
+    def _setup_keys(self):
+        if self.mode == 'fmri':
+            self.keys = {'action': 'b', 'responses': ['d', 'n', 'z', 'e', 'b', 'y', 'g', 'r'], 'trigger': 't', 'quit': 'escape'}
+        else:
+            self.keys = {'action': 'y', 'responses': ['a', 'z', 'e', 'r', 'y', 'u', 'i', 'o'], 'trigger': 't', 'quit': 'escape'}
+
     def log_step(self, event_type, trial=None, **kwargs):
         self.is_data_saved = False
         current_time = self.task_clock.getTime() if self.task_clock else 0.0
@@ -149,14 +188,8 @@ class TemporalJudgement:
             for k, t in keys:
                 self.log_step('ttl_pulse', key=k, real_time=t)
 
-    def _setup_keys(self):
-        if self.mode == 'fmri':
-            self.keys = {'action': 'b', 'responses': ['d', 'n', 'z', 'e', 'b', 'y', 'g', 'r'], 'trigger': 't', 'quit': 'escape'}
-        else:
-            self.keys = {'action': 'y', 'responses': ['a', 'z', 'e', 'r', 'y', 'u', 'i', 'o'], 'trigger': 't', 'quit': 'escape'}
-
     # =========================================================================
-    # EXPERIMENT PHASES
+    # PHASES
     # =========================================================================
 
     def show_instructions(self):
@@ -190,19 +223,13 @@ class TemporalJudgement:
         self.trigger_time = 0.0 
         self.log_step('trigger_received', info="T0 start")
         self.logger.info("Trigger reçu (T0). Début de l'expérience.")
-        
-        # TRIGGER T=0
         self.ParPort.send_trigger(self.codes['start_exp'])
 
-    # --- RESTING STATE ---
     def show_resting_state(self, duration_s):
         self.current_phase = 'resting_state'
         self.current_trial_idx = None
-        
         self.logger.info(f"=== Resting State Start ({duration_s}s) ===")
         self.log_step('resting_state_start', duration_expected=duration_s)
-        
-        # TRIGGER: Début Resting
         self.ParPort.send_trigger(self.codes['rest_start'])
         
         start_time = self.task_clock.getTime()
@@ -213,9 +240,7 @@ class TemporalJudgement:
             self.win.flip()
             
             elapsed = self.task_clock.getTime() - start_time
-            
             if elapsed - last_print_time >= 15:
-                # Log toutes les 15 secondes pour suivi
                 self.logger.info(f"[REST] {int(elapsed)}s / {duration_s}s")
                 last_print_time = elapsed
 
@@ -225,12 +250,9 @@ class TemporalJudgement:
             core.wait(0.01)
 
         self.logger.info(f"[REST] Terminé : {duration_s}s écoulées")
-        
-        # TRIGGER: Fin Resting
         self.ParPort.send_trigger(self.codes['rest_end'])
         self.log_step('resting_state_end')
 
-    # --- CRISIS SIMULATION & VALIDATION ---
     def show_crisis_validation_window(self):
         self.current_phase = 'crisis_validation'
         self.current_trial_idx = None
@@ -238,13 +260,11 @@ class TemporalJudgement:
 
         loop_crisis = True
         while loop_crisis:
-            # 1. Launch Prompt
+            # 1. Prompt
             msg_launch = visual.TextStim(self.win, text='Appuyer pour démarrer la crise', height=0.08)
             msg_launch.draw()
             self.win.flip()
             self.log_step('crisis_prompt_start')
-            
-            # TRIGGER
             self.ParPort.send_trigger(self.codes['crisis_prompt'])
             
             event.clearEvents()
@@ -255,10 +275,9 @@ class TemporalJudgement:
                 if keys and keys[0] == self.keys['quit']: should_quit(self.win, quit=True)
                 core.wait(0.01)
 
-            # 2. Crisis Active
+            # 2. Action
             self.log_step('crisis_action_started', trigger_key=keys[0])
             self.ParPort.send_trigger(self.codes['crisis_start'])
-            
             self.fixation.draw()
             self.win.flip()
             core.wait(0.5) 
@@ -291,10 +310,8 @@ class TemporalJudgement:
             success = True if idx < 4 else False
             result_label = 'success' if success else 'failed'
             
-            if success:
-                self.ParPort.send_trigger(self.codes['crisis_res_success'])
-            else:
-                self.ParPort.send_trigger(self.codes['crisis_res_fail'])
+            trig = self.codes['crisis_res_success'] if success else self.codes['crisis_res_fail']
+            self.ParPort.send_trigger(trig)
             
             self.log_step('crisis_result_chosen', result=result_label, key=key)
             self.logger.info(f"Crisis Outcome: {result_label.upper()}")
@@ -305,20 +322,19 @@ class TemporalJudgement:
             self.win.flip()
             core.wait(1.0)
 
-            # 4. Retry Logic
+            # 4. Retry
             if not success:
                 retry_text = visual.TextStim(self.win, text='Recommencer ?\n[1-4] Oui   [5-8] Non', height=0.06)
                 retry_text.draw()
                 self.win.flip()
-                
                 keys = event.waitKeys(keyList=self.keys['responses'] + [self.keys['quit']])
                 idx_retry = self.keys['responses'].index(keys[0])
                 
-                if idx_retry >= 4:  # NON
+                if idx_retry >= 4:
                     self.log_step('crisis_retry_decision', choice='no_retry_quit')
                     self.ParPort.send_trigger(self.codes['crisis_retry_no'])
                     should_quit(self.win, quit=True)
-                else: # OUI
+                else:
                     self.log_step('crisis_retry_decision', choice='retry')
                     self.ParPort.send_trigger(self.codes['crisis_retry_yes'])
                     self.logger.info("Crisis Retry Selected.")
@@ -328,7 +344,7 @@ class TemporalJudgement:
         self.log_step('crisis_phase_end')
 
     # =========================================================================
-    # CORE TRIAL LOGIC
+    # LOGIQUE CŒUR DE L'ESSAI (TRIAL) AVEC GESTION GC
     # =========================================================================
 
     def draw_lightbulb(self, base_color, bulb_on=False):
@@ -339,85 +355,71 @@ class TemporalJudgement:
         bulb.draw()
 
     def run_trial(self, trial_index, total_trials, condition, delay_ms, feedback=False):
+        """
+        Exécute un essai complet avec désactivation du GC pour stabilité temporelle.
+        """
         should_quit(self.win)
+        
+        # --- CRITICAL TIMING START: DISABLE GARBAGE COLLECTOR ---
+        gc.disable() 
+
         self.current_trial_idx = trial_index
         base_color = '#00FF00' if condition == 'active' else '#FF0000'
 
-        # --- 1. Trial Start ---
         log_event = 'trial_start_feedback' if feedback else 'trial_start'
         self.log_step(log_event, condition=condition, requested_delay_ms=delay_ms)
-        
         t_code = self.codes['trial_active'] if condition == 'active' else self.codes['trial_passive']
         
-        # OPTIMISATION 1 : Trigger après le setup graphique ou via callOnFlip si critique
-        # Ici c'est moins grave, mais on peut le faire juste avant le flip
+        # 1. Fixation
         self.fixation.draw()
-        self.ParPort.send_trigger(t_code) 
+        self.win.callOnFlip(self.ParPort.send_trigger, t_code)
         self.win.flip()
         
         core.wait(0.5)
 
-        # Show Bulb OFF
+        # 2. Présentation initiale
         self.draw_lightbulb(base_color=base_color, bulb_on=False)
         self.win.flip()
         
-        # --- 2. Wait for Action (Keypress) ---
         event.clearEvents(eventType='keyboard')
         keys = []
+        action_time = 0
         
+        # 3. Action
         while not keys:
-            keys = event.getKeys(keyList=[self.keys['action'], self.keys['quit']])
+            keys = event.getKeys(keyList=[self.keys['action'], self.keys['quit']], timeStamped=self.task_clock)
             if keys:
-                if keys[0] == self.keys['quit']: should_quit(self.win, quit=True)
-                
-                # --- CORRECTION MAJEURE ICI ---
-                # 1. On capture le temps IMMEDIATEMENT (C'est le temps réel physique)
-                action_time = self.task_clock.getTime()
-                wait_start = action_time # juste pour le log
-                
-                # 2. On envoie le trigger APRES avoir sécurisé le temps
+                key_name, t_down = keys[0]
+                if key_name == self.keys['quit']: should_quit(self.win, quit=True)
+                action_time = t_down
                 self.ParPort.send_trigger(self.codes['action_bulb'])
                 break
             core.wait(0.0005) 
 
-        self.log_step('action_performed', action_key=keys[0], rt_prep=0) # rt_prep approximatif ici
+        self.log_step('action_performed', action_key=keys[0][0], rt_prep=0) 
 
-        # --- 3. Precise Timing Logic ---
-        # Maintenant action_time est "pur", donc target_light_time sera exact
+        # 4. Délai Précis
         target_light_time = action_time + (delay_ms / 1000.0)
-        
         self.draw_lightbulb(base_color=base_color, bulb_on=True)
         
-        # Attente précise
-        frame_tolerance_s = (0.75 * 1/self.frame_rate)
+        frame_tolerance_s = (0.75 / self.frame_rate)
         while self.task_clock.getTime() < (target_light_time - frame_tolerance_s):
-            core.wait(0.001) 
+            core.wait(0.001)
 
-        # --- CORRECTION MAJEURE 2 (Synchronisation écran) ---
-        # On demande à PsychoPy d'envoyer le trigger EXACTEMENT quand la carte graphique
-        # affiche l'image (au prochain rafraîchissement vertical), sans bloquer Python avant.
         self.win.callOnFlip(self.ParPort.send_trigger, self.codes['bulb_on'])
-        
-        # Le flip se fait
         self.win.flip() 
-        
-        # On relève le temps tout de suite après le flip (le trigger est parti en parallèle grâce à callOnFlip)
         bulb_on_time = self.task_clock.getTime()
         
         actual_delay = (bulb_on_time - action_time) * 1000
         self.log_step('bulb_lit', actual_delay_ms=actual_delay, error_ms=actual_delay-delay_ms)
         
-        # Random wait before response prompt
         wait_duration = random.uniform(1.2, 1.8)
         core.wait(wait_duration)
         self.win.flip()
 
-        # ... (La suite "Response Collection" reste inchangée) ...
-        # (Copiez-collez la fin de votre fonction originale ici)
-        # --- 4. Response Collection ---
+        # 5. Réponse
         t0_response = self.task_clock.getTime()
         self.log_step('response_prompt_shown')
-        
         self.ParPort.send_trigger(self.codes['response_prompt'])
         
         self.response_title.draw()
@@ -427,7 +429,6 @@ class TemporalJudgement:
 
         event.clearEvents(eventType='keyboard')
         resp_keys = event.waitKeys(maxWait=5.0, keyList=self.keys['responses'] + [self.keys['quit']], timeStamped=self.task_clock)
-        # On peut remettre le check ici si on veut, c'est une phase lente
 
         rt = None
         response_ms = None
@@ -435,15 +436,16 @@ class TemporalJudgement:
         if resp_keys:
             resp_key, timestamp_key = resp_keys[0]
             if resp_key == self.keys['quit']: should_quit(self.win, quit=True)
-            
             self.ParPort.send_trigger(self.codes['response_given'])
 
             rt = timestamp_key - t0_response
             response_ms = self.response_key_to_ms.get(resp_key)
-            
             idx_user = self.keys['responses'].index(resp_key)
             
-            # --- FEEDBACK LOGIC ---
+            # --- 4K Scale Check ---
+            current_line_width = 5 * self.pixel_scale
+            thick_line_width = 6 * self.pixel_scale
+
             if feedback:
                 is_correct = (response_ms == delay_ms)
                 user_bar_color = 'green' if is_correct else 'yellow'
@@ -456,7 +458,8 @@ class TemporalJudgement:
                 user_line = visual.Line(self.win, 
                                         start=(self.underline_x_positions[idx_user]-0.04, self.underline_y_line),
                                         end=(self.underline_x_positions[idx_user]+0.04, self.underline_y_line),
-                                        lineColor=user_bar_color, lineWidth=5)
+                                        lineColor=user_bar_color, 
+                                        lineWidth=current_line_width)
                 user_line.draw()
                 
                 if not is_correct:
@@ -465,21 +468,21 @@ class TemporalJudgement:
                         correct_line = visual.Line(self.win, 
                                                 start=(self.underline_x_positions[idx_correct]-0.04, self.underline_y_line),
                                                 end=(self.underline_x_positions[idx_correct]+0.04, self.underline_y_line),
-                                                lineColor='red', lineWidth=6)
+                                                lineColor='red', 
+                                                lineWidth=thick_line_width)
                         correct_line.draw()
                     except ValueError: pass
 
                 fb_text = visual.TextStim(self.win, text=msg_text, color=msg_color, height=0.05, pos=(0, -0.2))
                 fb_text.draw()
-                
                 self.win.flip()
-                core.wait(1.5) 
-                
+                core.wait(1.0) 
             else:
                 underline = visual.Line(self.win, 
                                         start=(self.underline_x_positions[idx_user]-0.04, self.underline_y_line),
                                         end=(self.underline_x_positions[idx_user]+0.04, self.underline_y_line),
-                                        lineColor='yellow', lineWidth=5)
+                                        lineColor='yellow', 
+                                        lineWidth=current_line_width)
                 self.response_title.draw()
                 self.response_options_text.draw()
                 self.response_instr.draw()
@@ -501,7 +504,13 @@ class TemporalJudgement:
             self.win.flip()
             core.wait(0.8)
 
+        # --- CRITICAL TIMING END: RE-ENABLE & COLLECT GARBAGE ---
+        gc.enable()
+        gc.collect() # Force nettoyage maintenant pendant la pause
+
         isi = random.uniform(*self.stim_isi_range)
+        self.fixation.draw()
+        self.win.flip()
         self.check_for_ttl()
         core.wait(isi)
         
@@ -550,11 +559,12 @@ class TemporalJudgement:
                                 swapped = True
                                 break
                         if not swapped:
-                            raise ValueError("Constraint conflict")
+                            raise ValueError("Impossible de résoudre les contraintes")
                 return current_trials
             except ValueError:
                 continue
         
+        self.logger.warning("Contraintes de randomisation strictes non respectées, utilisation du shuffle simple.")
         return trials
 
     def run_trial_block(self, n_trials, block_name, phase_tag, feedback):
@@ -572,7 +582,7 @@ class TemporalJudgement:
         self.logger.info(f"--- Block End: {block_name} ---")
 
     # =========================================================================
-    # DATA SAVING & CLEANUP
+    # SAUVEGARDE ET FERMETURE
     # =========================================================================
 
     def save_results(self):
@@ -615,17 +625,12 @@ class TemporalJudgement:
         self.text_stim.text = "Fin de la session.\nMerci."
         self.text_stim.draw()
         self.win.flip()
-        core.wait(15)
+        core.wait(15) 
         self.win.close()
         core.quit()
 
     def run(self):
-        """
-        Main execution logic sécurisée.
-        """
-        # Drapeau pour savoir si l'expérience est allée au bout
         finished_naturally = False 
-
         try:
             if self.run_type == 'training':
                 self.logger.info(f"Lancement : ENTRAÎNEMENT ({self.n_trials_training} essais)")
@@ -636,14 +641,15 @@ class TemporalJudgement:
             else:
                 self.show_instructions()
                 self.wait_for_trigger()
+                
                 if self.run_type == 'base':
-                    self.logger.info(f"Lancement : BASE (Base:{self.n_trials_base} / Bloc:{self.n_trials_block})")
+                    self.logger.info(f"Lancement : PROTOCOLE COMPLET (Base:{self.n_trials_base} / Bloc:{self.n_trials_block})")
                     self.show_resting_state(duration_s=150) 
                     self.run_trial_block(self.n_trials_base, "BASE", phase_tag='base', feedback=False)
                     self.show_crisis_validation_window()
                     self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
                 else:
-                    self.logger.info(f"Lancement : BLOC ({self.n_trials_block} essais)")
+                    self.logger.info(f"Lancement : BLOC COURT ({self.n_trials_block} essais)")
                     self.show_resting_state(duration_s=150) 
                     self.show_crisis_validation_window()
                     self.run_trial_block(self.n_trials_block, "BLOCK", phase_tag='run_standard', feedback=False)
@@ -658,7 +664,7 @@ class TemporalJudgement:
             raise e
             
         finally:
-            self.logger.info("Tentative de sauvegarde d'urgence...")
+            self.logger.info("Tentative de sauvegarde finale...")
             self.save_results()
 
             if finished_naturally:

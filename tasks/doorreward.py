@@ -56,10 +56,11 @@ class DoorReward:
         }
         
         # Configuration des touches selon le mode
+        # Note: 'quit' est une liste ici ['escape', 'q']
         if mode == "fmri":
-            self.keys = {'choices': ['b', 'y', 'g'], 'trigger': 't', 'quit': 'escape'}
+            self.keys = {'choices': ['b', 'y', 'g'], 'trigger': 't', 'quit': ['escape', 'q']}
         else:
-            self.keys = {'choices': ['a', 'z', 'e'], 'trigger': 't', 'quit': 'escape'}
+            self.keys = {'choices': ['a', 'z', 'e'], 'trigger': 't', 'quit': ['escape', 'q']}
         
         self.task_clock = None 
         self._setup_visuals()
@@ -84,7 +85,6 @@ class DoorReward:
         self.score_stim = visual.TextStim(self.win, text="Total: 0 €", pos=(0, -0.6), height=0.08)
         self.fixation = visual.TextStim(self.win, text='+', color='white', height=0.15)
         
-        # J'ai augmenté height=0.08 pour que ce soit plus lisible
         self.text_instr = visual.TextStim(self.win, text="", color='white', height=0.08, wrapWidth=1.8)
 
     def log_step(self, event_type, **kwargs):
@@ -112,6 +112,32 @@ class DoorReward:
                 self.log_step('ttl_pulse', real_time=t)
 
     # =========================================================================
+    # METHODE INTELLIGENTE D'ATTENTE
+    # =========================================================================
+    
+    def smart_wait(self, duration):
+        """
+        Attend 'duration' secondes avec une précision ~1ms.
+        Vérifie la touche 'quit' en permanence.
+        Renvoie True si le temps est écoulé, False si on quitte.
+        """
+        timer = core.CountdownTimer(duration)
+        while timer.getTime() > 0:
+            # Vérification Touche
+            if event.getKeys(keyList=self.keys['quit']):
+                should_quit(self.win)
+                return False
+            
+            # Vérification TTL (optionnel pendant les pauses)
+            self.check_for_ttl()
+            
+            # Micro-pause de 1ms pour ne pas saturer le CPU
+            # Cela garantit une erreur max de ~1ms sur la durée totale
+            core.wait(0.001)
+            
+        return True
+
+    # =========================================================================
     # TASK PHASES
     # =========================================================================
 
@@ -124,43 +150,55 @@ class DoorReward:
             "Appuyez sur 't' pour commencer..."
         )
         self.text_instr.text = instr
-        
-        # --- DESSIN ET FLIP ---
         self.text_instr.draw()
         self.win.flip()
         
-        self.logger.log("Waiting for trigger...")
+        self.logger.log("Initializing hardware & Waiting for trigger...")
         
-        # Attente bloquante du trigger
-        event.waitKeys(keyList=[self.keys['trigger']])
+        # 1. On lance l'enregistrement en avance (pendant la lecture)
+        self.EyeTracker.start_recording()
         
+        event.clearEvents()
+        
+        # 2. Attente du trigger 't'
+        keys = event.waitKeys(keyList=[self.keys['trigger']] + self.keys['quit'], timeStamped=False)
+        
+        if keys and keys[0] in self.keys['quit']:
+            self.EyeTracker.stop_recording()
+            should_quit(self.win)
+            sys.exit()
+
+        # 3. Démarrage "Visuel" Immédiat : Croix de fixation
+        self.fixation.draw()
+        self.win.flip()
+
+        # 4. On lance l'horloge interne (T0) et on envoie les marqueurs
         self.task_clock = core.Clock() 
         self.ParPort.send_trigger(self.codes['start_exp'])
         self.log_step('experiment_start')
-        
-        self.EyeTracker.start_recording()
         self.EyeTracker.send_message("START_EXP")
-        self.logger.ok("Experiment Started")
+        
+        self.logger.ok("Trigger reçu. Fixation de 5s en cours...")
+        
+        # 5. Attente de 5 secondes (stabilisation)
+        # On utilise smart_wait pour garder la possibilité de quitter avec Echap
+        if not self.smart_wait(5.0):
+            self.EyeTracker.stop_recording()
+            sys.exit()
+            
+        self.logger.ok("Fin fixation. Démarrage des essais.")
 
     def show_resting_state(self, duration_s):
         self.ParPort.send_trigger(self.codes['rest_start'])
         self.log_step('rest_start')
         
-        timer = core.CountdownTimer(duration_s)
-        while timer.getTime() > 0:
-            self.fixation.draw()
-            self.win.flip()
-            
-            self.check_for_ttl()
-            
-            # --- CORRECTION ICI : suppression de quit=True ---
-            if event.getKeys(keyList=[self.keys['quit']]): 
-                should_quit(self.win)
-                
-            core.wait(0.1)
-            
+        # Utilisation de smart_wait aussi pour le resting state
+        if not self.smart_wait(duration_s):
+            return False # Indique qu'on a quitté
+
         self.ParPort.send_trigger(self.codes['rest_end'])
         self.log_step('rest_end')
+        return True
 
     def run_trial(self, trial_num):
         self.current_trial_idx = trial_num
@@ -178,8 +216,13 @@ class DoorReward:
 
         # --- 2. CHOIX ---
         event.clearEvents()
-        keys = event.waitKeys(maxWait=4.0, keyList=self.keys['choices'] + [self.keys['quit']], timeStamped=self.task_clock)
         
+        # On attend CHOIX ou QUIT
+        # Note: self.keys['quit'] est une liste, on l'ajoute à la liste des choices
+        wait_list = self.keys['choices'] + self.keys['quit']
+        keys = event.waitKeys(maxWait=4.0, keyList=wait_list, timeStamped=self.task_clock)
+        
+        # --- GESTION DU TIMEOUT ---
         if not keys:
             self.ParPort.send_trigger(self.codes['timeout'])
             self.log_step('timeout')
@@ -189,16 +232,25 @@ class DoorReward:
             self.feedback_stim.draw()
             self.win.flip()
             self.logger.warn(f"Trial {trial_num} Timeout")
-            core.wait(1.0)
-            return
+            
+            # Utilisation de smart_wait pour l'attente du timeout
+            if not self.smart_wait(1.0): return False 
+            return True # On passe au suivant
 
         key_pressed, rt_abs = keys[0]
         rt = rt_abs - onset_time
         
-        # --- CORRECTION ICI (Déjà bonne dans ton snippet précédent) ---
-        if key_pressed == self.keys['quit']: should_quit(self.win)
+        # --- GESTION DE L'ARRET (QUIT) ---
+        if key_pressed in self.keys['quit']: 
+            should_quit(self.win)
+            return False # Signal d'arrêt global
         
-        choice_idx = self.keys['choices'].index(key_pressed)
+        # Si on est ici, c'est une touche valide (a, z, e...)
+        try:
+            choice_idx = self.keys['choices'].index(key_pressed)
+        except ValueError:
+            # Sécurité au cas où
+            return True 
         
         self.ParPort.send_trigger(self.codes['choice_made'])
         self.log_step('response_made', key=key_pressed, choice_idx=choice_idx, rt=rt)
@@ -211,7 +263,8 @@ class DoorReward:
         self.win.flip()
         self.ParPort.send_trigger(self.codes['door_open'])
         
-        core.wait(random.uniform(1.0, 2.0))
+        # Attente ouverture (random 1-2s)
+        if not self.smart_wait(random.uniform(1.0, 2.0)): return False
 
         # --- 5. RESULTAT ---
         is_win = random.random() < self.reward_prob
@@ -237,7 +290,7 @@ class DoorReward:
         self.score_stim.draw()
         self.win.flip()
         
-        # Log stylé
+        # Log console
         outcome_str = "WIN " if is_win else "LOSE"
         self.logger.log(
             f"Trial {trial_num:>2}/{self.n_trials:<2} | "
@@ -247,12 +300,17 @@ class DoorReward:
             f"Total: {self.total_gain:>3} €"
         )
         
-        core.wait(1.5)
+        # Attente Feedback (1.5s)
+        if not self.smart_wait(1.5): return False
 
         # --- 6. ITI (Inter-Trial Interval) ---
         self.fixation.draw()
         self.win.flip()
-        core.wait(random.uniform(1.0, 2.5))
+        
+        # Attente ITI (random 1-2.5s)
+        if not self.smart_wait(random.uniform(1.0, 2.5)): return False
+        
+        return True # Fin de l'essai normale
 
     def save_results(self):
         if self.is_data_saved: return 
@@ -279,9 +337,20 @@ class DoorReward:
 
     def run(self):
         self.show_instructions()
-        self.show_resting_state(2.0)
+        
+        # Resting state initial
+        if not self.show_resting_state(2.0):
+            self.save_results()
+            return # Sortie si quitté pendant le rest
+
         for i in range(1, self.n_trials + 1):
-            self.run_trial(i)
+            # Si run_trial renvoie False (quitter), on casse la boucle
+            if not self.run_trial(i):
+                break 
+        
+        # Resting state final (si on n'a pas quitté avant)
+        # On peut choisir de ne pas le montrer si on a fait un break, 
+        # mais ici ça s'exécute, smart_wait gérera le quit.
         self.show_resting_state(2.0)
         
         self.EyeTracker.stop_recording()

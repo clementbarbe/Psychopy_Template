@@ -1,146 +1,282 @@
-from psychopy import visual, event, core
-import random, csv, os
+"""
+Flanker Task (fMRI / Behavioral)
+-------------------------------
+Tâche de type Eriksen Flanker, compatible IRM.
+
+- Synchronisation sur trigger scanner
+- Mesure RT précise (clock globale)
+- Log événementiel structuré
+- API compatible menu existant
+
+Auteur : [Clément BARBE / CENIR]
+"""
+
+import os
+import csv
+import random
+import logging
+import sys
 from datetime import datetime
+
+from psychopy import visual, event, core
 from utils.utils import should_quit
 
 
 class Flanker:
-    def __init__(self, win, nom, enregistrer, screenid = 1, n_trials=10,
-                 stim_dur=1, isi=1.0, data_dir='data/flanker'):
+    """
+    Implémentation rigoureuse d'une tâche Flanker.
+    """
+
+    # ======================================================================
+    # INITIALISATION
+    # ======================================================================
+
+    def __init__(self, win, nom, enregistrer, screenid=1,
+                 n_trials=10, stim_dur=1.0, isi=1.0,
+                 data_dir='data/flanker'):
+
         self.win = win
         self.nom = nom
         self.enregistrer = enregistrer
-        self;screenid = screenid
-        self.n_trials = n_trials
-        self.stim_dur = stim_dur
-        self.isi = isi
+        self.screenid = screenid
+
+        self.n_trials = int(n_trials)
+        self.stim_dur = float(stim_dur)
+        self.isi = float(isi)
+
         self.data_dir = data_dir
         os.makedirs(self.data_dir, exist_ok=True)
 
-        self.results = []
-        self.text_stim = visual.TextStim(self.win, height=0.07, color='white')
-        self.trial_clock = core.Clock()  # <- Ajout d'une clock pour mesurer le RT
+        self._setup_logger()
+
+        # ------------------------------------------------------------------
+        # CLOCKS
+        # ------------------------------------------------------------------
+        self.task_clock = None   # démarre au trigger (T0 IRM)
+        self.trial_clock = core.Clock()
+
+        # ------------------------------------------------------------------
+        # STIMULI
+        # ------------------------------------------------------------------
+        self.text_stim = visual.TextStim(
+            self.win,
+            height=0.08,
+            color='white',
+            wrapWidth=1.5
+        )
+
+        self.fixation = visual.TextStim(
+            self.win,
+            text='+',
+            height=0.12,
+            color='white'
+        )
+
+        # ------------------------------------------------------------------
+        # KEYS
+        # ------------------------------------------------------------------
+        self.keys = {
+            'left': 'left',
+            'right': 'right',
+            'trigger': 't',
+            'quit': 'escape'
+        }
+
+        # ------------------------------------------------------------------
+        # DATA
+        # ------------------------------------------------------------------
+        self.start_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.records = []
+        self.current_trial = None
+
+    # ======================================================================
+    # LOGGER
+    # ======================================================================
+
+    def _setup_logger(self):
+        self.logger = logging.getLogger('FlankerTask')
+        self.logger.setLevel(logging.INFO)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler(sys.stdout)
+            formatter = logging.Formatter(
+                '[%(asctime)s] %(levelname)-8s : %(message)s',
+                datefmt='%H:%M:%S'
+            )
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+
+    # ======================================================================
+    # LOGGING STRUCTURÉ
+    # ======================================================================
+
+    def log_event(self, event_type, **kwargs):
+        t = self.task_clock.getTime() if self.task_clock else 0.0
+        entry = {
+            'participant': self.nom,
+            'trial': self.current_trial,
+            'time_s': round(t, 5),
+            'event_type': event_type
+        }
+        entry.update(kwargs)
+        self.records.append(entry)
+
+    # ======================================================================
+    # PHASES
+    # ======================================================================
 
     def show_instructions(self):
-        instructions = (
+        self.logger.info("Affichage des instructions")
+        self.text_stim.text = (
             "Tâche Flanker\n\n"
-            "Vous verrez une série de flèches.\n"
-            "Indiquez la direction de la flèche centrale :\n"
-            "Flèche gauche = touche 'left'\n"
-            "Flèche droite = touche 'right'\n\n"
+            "Indiquez la direction de la flèche CENTRALE.\n\n"
+            "← : touche LEFT\n"
+            "→ : touche RIGHT\n\n"
             "Appuyez sur une touche pour commencer."
         )
-        self.text_stim.text = instructions
         self.text_stim.draw()
         self.win.flip()
-        event.waitKeys()
 
-    def wait_for_trigger(self, trigger_key='t'):
-        """Affiche un message et attend le trigger scanner."""
-        self.text_stim.text = (
-            f"En attente du trigger scanner ('{trigger_key}')\n"
-            "Appuyez sur 'escape' pour quitter."
-        )
-        self.text_stim.draw()
-        self.win.flip()
-        keys = event.waitKeys(keyList=[trigger_key, 'escape'])
-        if 'escape' in keys:
+        event.waitKeys(keyList=['space', 'return', self.keys['quit']])
+        if event.getKeys(keyList=[self.keys['quit']]):
             should_quit(self.win, quit=True)
 
-    def generate_trial(self):
-        directions = ['left', 'right']
-        target_dir = random.choice(directions)
-        congruent = random.choice([True, False])
-        flankers = [target_dir]*2 if congruent else ['left' if target_dir == 'right' else 'right']*2
+    def wait_for_trigger(self):
+        self.logger.info("Attente du trigger scanner")
+        self.text_stim.text = f"En attente du trigger ('{self.keys['trigger']}')"
+        self.text_stim.draw()
+        self.win.flip()
 
-        mapping = {'left': '<', 'right': '>'}
-        stim_str = ''.join([mapping[flankers[0]], mapping[flankers[1]], mapping[target_dir],
-                            mapping[flankers[0]], mapping[flankers[1]]])
-        return stim_str, target_dir, congruent
+        keys = event.waitKeys(keyList=[self.keys['trigger'], self.keys['quit']])
+        if keys[0] == self.keys['quit']:
+            should_quit(self.win, quit=True)
+
+        self.task_clock = core.Clock()
+        self.log_event('trigger_received')
+        self.logger.info("Trigger reçu – T0 démarré")
+
+    # ======================================================================
+    # TRIAL GENERATION
+    # ======================================================================
+
+    @staticmethod
+    def generate_trial():
+        directions = ['left', 'right']
+        target = random.choice(directions)
+        congruent = random.choice([True, False])
+
+        if congruent:
+            flankers = [target, target]
+        else:
+            flankers = ['left' if target == 'right' else 'right'] * 2
+
+        symbol = {'left': '<', 'right': '>'}
+        stim = (
+            symbol[flankers[0]] +
+            symbol[flankers[1]] +
+            symbol[target] +
+            symbol[flankers[0]] +
+            symbol[flankers[1]]
+        )
+
+        return stim, target, congruent
+
+    # ======================================================================
+    # TRIAL EXECUTION
+    # ======================================================================
+
+    def run_trial(self, trial_idx):
+        self.current_trial = trial_idx
+        stim, target, congruent = self.generate_trial()
+
+        # ---------------- FIXATION ----------------
+        self.fixation.draw()
+        self.win.flip()
+        core.wait(0.5)
+
+        # ---------------- STIMULUS ----------------
+        self.text_stim.text = stim
+        self.text_stim.draw()
+        self.win.flip()
+
+        self.trial_clock.reset()
+        self.log_event(
+            'stim_onset',
+            stimulus=stim,
+            target=target,
+            congruent=congruent
+        )
+
+        event.clearEvents()
+        response, rt = None, None
+
+        while self.trial_clock.getTime() < self.stim_dur:
+            keys = event.getKeys(
+                keyList=[self.keys['left'], self.keys['right'], self.keys['quit']],
+                timeStamped=self.trial_clock
+            )
+            if keys:
+                key, t = keys[0]
+                if key == self.keys['quit']:
+                    should_quit(self.win, quit=True)
+                response = key
+                rt = round(t, 5)
+                break
+            core.wait(0.001)
+
+        self.win.flip()
+        accurate = (response == target)
+
+        self.log_event(
+            'response',
+            response=response if response else 'none',
+            rt=rt,
+            accurate=accurate
+        )
+
+        self.logger.info(
+            f"Trial {trial_idx:02d} | {stim} | "
+            f"Congruent={congruent} | Resp={response} | "
+            f"Acc={accurate} | RT={rt}"
+        )
+
+        core.wait(self.isi)
+
+    # ======================================================================
+    # RUN
+    # ======================================================================
 
     def run(self):
-        self.show_instructions()
+        try:
+            self.show_instructions()
+            self.wait_for_trigger()
 
-        # Attente du trigger scanner avant de démarrer la tâche
-        self.wait_for_trigger(trigger_key='t')
+            for t in range(1, self.n_trials + 1):
+                should_quit(self.win)
+                self.run_trial(t)
 
-        for trial in range(1, self.n_trials + 1):
-            should_quit(self.win)
+        finally:
+            self.save_results()
 
-            stim_str, target_dir, congruent = self.generate_trial()
-
-            # Affichage du stimulus
-            self.text_stim.text = stim_str
-            self.text_stim.draw()
-            self.win.flip()
-
-            # Démarrer l'enregistrement des réponses dès affichage
-            self.trial_clock.reset()
-            resp = None
-            rt = None
-
-            # Présenter stimulus pour un temps fixe, enregistrer la réponse pendant ce temps
-            while self.trial_clock.getTime() < self.stim_dur:
-                keys = event.getKeys(keyList=['left', 'right', 'escape'], timeStamped=self.trial_clock)
-                if keys:
-                    key, ts = keys[0]
-                    if key == 'escape':
-                        should_quit(self.win)
-                    resp = key
-                    rt = round(ts, 5)
-                    break
-                core.wait(0.005)  # plus fin pour un meilleur timing
-
-            # Effacer l’écran
-            self.win.flip()
-
-            accurate = (resp == target_dir)
-
-            trial_result = {
-                'trial': trial,
-                'stimulus': stim_str,
-                'target_direction': target_dir,
-                'congruent': congruent,
-                'response': resp if resp is not None else 'none',
-                'accurate': accurate,
-                'RT': rt
-            }
-
-            self.results.append(trial_result)
-
-            # 🔎 DEBUG temps réel : affichage direct après chaque essai
-            print(f" Trial {trial:2d} | Stimulus: {stim_str} | "
-                f"Congruent: {congruent} | Cible: {target_dir} | "
-                f"Réponse: {resp if resp is not None else 'none'} | "
-                f"Correct: {accurate} | RT: {rt if rt is not None else 'N/A'}", flush = True)
-
-            # Pause inter-essai stricte
-            core.wait(self.isi)
-
-
-    def print_results_summary(self):
-        print("\n--- Résultats de la tâche Flanker ---")
-        n_correct = sum(r['accurate'] for r in self.results)
-        n_trials = len(self.results)
-        print(f"Réponses correctes : {n_correct} / {n_trials} ({100 * n_correct / n_trials:.1f}%)")
-        print("\nDétail par essai :")
-        for r in self.results:
-            print(f"Essai {r['trial']:2d} | Stimulus: {r['stimulus']} | "
-                  f"Congruent: {r['congruent']} | Cible: {r['target_direction']} | "
-                  f"Réponse: {r['response']} | Correct: {r['accurate']} | RT: {r['RT'] if r['RT'] is not None else 'N/A'}")
+    # ======================================================================
+    # SAVE
+    # ======================================================================
 
     def save_results(self):
-        if not self.enregistrer:
+        if not self.enregistrer or not self.records:
             return
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        fname = f"{self.nom}_Flanker_{ts}.csv"
+
+        fname = f"{self.nom}_Flanker_{self.start_timestamp}.csv"
         path = os.path.join(self.data_dir, fname)
+
+        keys = set()
+        for r in self.records:
+            keys.update(r.keys())
+
+        fieldnames = sorted(keys)
+
         with open(path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=[
-                'participant', 'date', 'trial', 'stimulus', 'target_direction',
-                'congruent', 'response', 'accurate', 'RT'
-            ])
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            for row in self.results:
-                writer.writerow({**row, 'participant': self.nom, 'date': ts})
-        print(f"Données sauvegardées : {path}")
+            writer.writerows(self.records)
+
+        self.logger.info(f"Données sauvegardées : {path}")

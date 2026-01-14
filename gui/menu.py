@@ -7,7 +7,6 @@ import sys
 
 # Import Direct des fichiers de tabs (avec le prefixe gui.)
 from gui.tabs.tabs_nback import NBackTab
-from gui.tabs.tabs_digitspan import DigitSpanTab
 from gui.tabs.tabs_flanker import FlankerTab
 from gui.tabs.tabs_stroop import StroopTab
 from gui.tabs.tabs_visual_memory import VisualMemoryTab
@@ -196,7 +195,6 @@ class ExperimentMenu(QMainWindow):
 
         # On passe 'self' (le menu) aux onglets
         self.tabs.addTab(NBackTab(self), "NBack")
-        self.tabs.addTab(DigitSpanTab(self), "DigitSpan")
         self.tabs.addTab(FlankerTab(self), "Flanker")
         self.tabs.addTab(StroopTab(self), "Stroop")
         self.tabs.addTab(VisualMemoryTab(self), "Visual Memory")

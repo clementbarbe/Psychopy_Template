@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, 
-                             QSpinBox, QDoubleSpinBox, QPushButton)
+                             QSpinBox, QPushButton, QLineEdit, QCheckBox) # <--- Ajout de QCheckBox
 from PyQt6.QtCore import Qt
 
 class StroopTab(QWidget):
@@ -15,28 +15,37 @@ class StroopTab(QWidget):
         params_group = QGroupBox("Paramètres Stroop")
         params_layout = QVBoxLayout()
         
+        # --- 1. Session ---
+        sess_layout = QHBoxLayout()
+        sess_layout.addWidget(QLabel("Session :"))
+        self.txt_session = QLineEdit("01")
+        sess_layout.addWidget(self.txt_session)
+        params_layout.addLayout(sess_layout)
+
+        # --- 2. Nombre d'essais ---
         trials_layout = QHBoxLayout()
         trials_layout.addWidget(QLabel("Nombre d'essais :"))
         self.spin_trials = QSpinBox()
         self.spin_trials.setRange(1, 500)
         self.spin_trials.setValue(30)
         trials_layout.addWidget(self.spin_trials)
-        
-        dur_layout = QHBoxLayout()
-        dur_layout.addWidget(QLabel("Durée stimulus (s) :"))
-        self.spin_dur = QDoubleSpinBox()
-        self.spin_dur.setRange(0.1, 5.0)
-        self.spin_dur.setValue(1.5)
-        dur_layout.addWidget(self.spin_dur)
-
-        dur_layout.addWidget(QLabel("ISI (s) :"))
-        self.spin_isi = QDoubleSpinBox()
-        self.spin_isi.setRange(0.1, 5.0)
-        self.spin_isi.setValue(1.0)
-        dur_layout.addWidget(self.spin_isi)
-        
         params_layout.addLayout(trials_layout)
-        params_layout.addLayout(dur_layout)
+
+        # --- 3. Nombre de choix ---
+        choices_layout = QHBoxLayout()
+        choices_layout.addWidget(QLabel("Nombre de choix :"))
+        self.spin_choices = QSpinBox()
+        self.spin_choices.setRange(2, 4)
+        self.spin_choices.setValue(3)
+        choices_layout.addWidget(self.spin_choices)
+        params_layout.addLayout(choices_layout)
+
+        # --- 4. Option Go / No-Go (NOUVEAU) ---
+        # J'utilise une checkbox simple. Si cochée = True.
+        self.chk_gonogo = QCheckBox("Activer le mode Go / No-Go")
+        self.chk_gonogo.setChecked(False) # Par défaut désactivé
+        params_layout.addWidget(self.chk_gonogo)
+        
         params_group.setLayout(params_layout)
         
         btn_run = QPushButton("Lancer Stroop")
@@ -47,10 +56,12 @@ class StroopTab(QWidget):
         layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
 
     def run_task(self):
+        # On ajoute le paramètre go_nogo ici
         params = {
             'tache': 'Stroop',
+            'session': self.txt_session.text(),
             'n_trials': self.spin_trials.value(),
-            'stim_dur': self.spin_dur.value(),
-            'isi': self.spin_isi.value()
+            'n_choices': self.spin_choices.value(),
+            'go_nogo': self.chk_gonogo.isChecked() # <--- Récupère True ou False
         }
         self.parent_menu.run_experiment(params)
