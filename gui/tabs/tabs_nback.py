@@ -1,6 +1,5 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QLabel, 
-                             QSpinBox, QDoubleSpinBox, QPushButton)
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
+                             QLabel, QSpinBox, QPushButton)
 
 class NBackTab(QWidget):
     def __init__(self, parent_menu):
@@ -9,61 +8,50 @@ class NBackTab(QWidget):
         self.init_ui()
 
     def init_ui(self):
+        # Layout principal de l'onglet
         layout = QVBoxLayout()
         self.setLayout(layout)
         
+        # --- GROUPE PARAMÈTRES ---
         params_group = QGroupBox("Paramètres NBack")
         params_layout = QVBoxLayout()
         
-        # Niveau N
-        n_layout = QVBoxLayout()
-        n_layout.addWidget(QLabel("Niveau N:"))
+        # 1. Ligne Niveau N (Horizontal)
+        n_layout = QHBoxLayout()
+        n_layout.addWidget(QLabel("Niveau N :"))
         self.spin_n = QSpinBox()
         self.spin_n.setRange(1, 4)
         self.spin_n.setValue(2)
         n_layout.addWidget(self.spin_n)
+        n_layout.addStretch() # C'est ceci qui empêche l'étirement sur toute la largeur
+        params_layout.addLayout(n_layout)
         
-        # Essais
-        trials_layout = QVBoxLayout()
-        trials_layout.addWidget(QLabel("Nombre d'essais:"))
+        # 2. Ligne Essais (Horizontal)
+        trials_layout = QHBoxLayout()
+        trials_layout.addWidget(QLabel("Nombre d'essais :"))
         self.spin_trials = QSpinBox()
         self.spin_trials.setRange(1, 100)
         self.spin_trials.setValue(10)
         trials_layout.addWidget(self.spin_trials)
-        
-        # Durées
-        dur_layout = QVBoxLayout()
-        dur_layout.addWidget(QLabel("ISI (s):"))
-        self.spin_isi = QDoubleSpinBox()
-        self.spin_isi.setSingleStep(0.1)
-        self.spin_isi.setValue(0.5)
-        
-        dur_layout.addWidget(QLabel("Durée stimulus (s):"))
-        self.spin_dur = QDoubleSpinBox()
-        self.spin_dur.setSingleStep(0.01)
-        self.spin_dur.setValue(1.5)
-        
-        dur_layout.addWidget(self.spin_isi)
-        dur_layout.addWidget(self.spin_dur)
-        
-        params_layout.addLayout(n_layout)
+        trials_layout.addStretch() # Pousse vers la gauche
         params_layout.addLayout(trials_layout)
-        params_layout.addLayout(dur_layout)
-        params_group.setLayout(params_layout)
         
+        # 3. Bouton Lancer (Directement dans le vertical, sous les HBox)
         btn_run = QPushButton("Lancer NBack")
         btn_run.clicked.connect(self.run_task)
+        params_layout.addWidget(btn_run)
         
+        # Finalisation du groupe
+        params_group.setLayout(params_layout)
         layout.addWidget(params_group)
+        
+        # Stretch final pour coller le tout en haut de la fenêtre
         layout.addStretch()
-        layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
 
     def run_task(self):
         params = {
             'tache': 'NBack',
             'N': self.spin_n.value(),
             'n_trials': self.spin_trials.value(),
-            'isi': self.spin_isi.value(),
-            'stim_dur': self.spin_dur.value()
         }
         self.parent_menu.run_experiment(params)

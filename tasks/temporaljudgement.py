@@ -16,7 +16,7 @@ import random
 import csv
 import os
 import sys
-import gc  # <--- IMPORT CRUCIAL POUR LE CONTROLE MEMOIRE
+import gc  
 from datetime import datetime
 
 # --- PsychoPy Imports ---

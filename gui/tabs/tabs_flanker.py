@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QLabel, 
-                             QSpinBox, QDoubleSpinBox, QPushButton)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
+                             QLabel, QSpinBox, QPushButton)
 from PyQt6.QtCore import Qt
 
 class FlankerTab(QWidget):
@@ -9,45 +9,42 @@ class FlankerTab(QWidget):
         self.init_ui()
 
     def init_ui(self):
+        # Layout principal de l'onglet
         layout = QVBoxLayout()
         self.setLayout(layout)
         
+        # --- GROUPE PARAMÈTRES ---
         params_group = QGroupBox("Paramètres Flanker")
         params_layout = QVBoxLayout()
         
-        trials_layout = QVBoxLayout()
-        trials_layout.addWidget(QLabel("Nombre d'essais:"))
+        # Ligne Nombre d'essais (Horizontal)
+        trials_layout = QHBoxLayout()
+        trials_layout.addWidget(QLabel("Nombre d'essais :"))
         self.spin_trials = QSpinBox()
         self.spin_trials.setRange(1, 100)
         self.spin_trials.setValue(20)
+        
         trials_layout.addWidget(self.spin_trials)
+        trials_layout.addStretch() # Pousse le spinbox vers la gauche
         
-        dur_layout = QVBoxLayout()
-        dur_layout.addWidget(QLabel("Durée stimulus (s):"))
-        self.spin_dur = QDoubleSpinBox()
-        self.spin_dur.setValue(1.0)
-        dur_layout.addWidget(QLabel("ISI (s):"))
-        self.spin_isi = QDoubleSpinBox()
-        self.spin_isi.setValue(1.0)
-        
-        dur_layout.addWidget(self.spin_dur)
-        dur_layout.addWidget(self.spin_isi)
         params_layout.addLayout(trials_layout)
-        params_layout.addLayout(dur_layout)
-        params_group.setLayout(params_layout)
         
+        # Bouton Lancer (Placé juste en dessous dans le layout vertical du groupe)
         btn_run = QPushButton("Lancer Flanker")
         btn_run.clicked.connect(self.run_task)
+        params_layout.addWidget(btn_run)
         
+        params_group.setLayout(params_layout)
+        
+        # Ajout du groupe au layout principal
         layout.addWidget(params_group)
+        
+        # Stretch pour caler le groupe en haut de l'onglet
         layout.addStretch()
-        layout.addWidget(btn_run, alignment=Qt.AlignmentFlag.AlignRight)
 
     def run_task(self):
         params = {
             'tache': 'Flanker',
             'n_trials': self.spin_trials.value(),
-            'stim_dur': self.spin_dur.value(),
-            'isi': self.spin_isi.value()
         }
         self.parent_menu.run_experiment(params)

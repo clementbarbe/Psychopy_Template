@@ -4,7 +4,6 @@ import random, csv, os
 import sys
 import time
 
-# On utilise tes modules customs
 from utils.hardware_manager import setup_hardware
 from utils.utils import should_quit
 from utils.logger import get_logger 
@@ -363,3 +362,5 @@ class DoorReward:
         end_txt.draw()
         self.win.flip()
         core.wait(2.0)
+
+        return

@@ -54,7 +54,6 @@ try:
     from hardware.parport import ParPort
     ParPortAvailable = True
 except (ImportError, OSError) as e:
-    logger.warn(f"Hardware: Parallel Port driver unavailable ({e}). Fallback to Dummy.")
     ParPort = SafeDummyParPort
     ParPortAvailable = False
 
@@ -64,7 +63,6 @@ try:
     from hardware.eyetracker import EyeTracker
     EyeTrackerAvailable = True
 except (ImportError, OSError) as e:
-    logger.warn(f"Hardware: EyeTracker driver unavailable ({e}). Fallback to Dummy.")
     EyeTracker = SafeDummyEyeTracker
     EyeTrackerAvailable = False
 

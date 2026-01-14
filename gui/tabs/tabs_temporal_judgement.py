@@ -68,15 +68,6 @@ class TemporalJudgementTab(QWidget):
         trials_layout.addStretch()
         run_custom_layout.addLayout(trials_layout)
 
-        run_num_layout = QHBoxLayout()
-        run_num_layout.addWidget(QLabel("Index Run (Block) :"))
-        self.spin_custom_idx = QSpinBox()
-        self.spin_custom_idx.setRange(1, 99)
-        self.spin_custom_idx.setValue(1)
-        run_num_layout.addWidget(self.spin_custom_idx)
-        run_num_layout.addStretch()
-        run_custom_layout.addLayout(run_num_layout)
-
         btn_run_custom = QPushButton("Lancer Custom")
         btn_run_custom.clicked.connect(self.run_custom)
         run_custom_layout.addWidget(btn_run_custom)

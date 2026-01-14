@@ -378,7 +378,7 @@ class Stroop:
             self.show_instructions() 
             if self.mode == 'fmri':
                 self.current_phase = 'waiting_trigger'
-                self.instr_stim.text = "En attente du scanner..."
+                self.instr_stim.text = "En attente du trigger scanner ('t')"
                 self.instr_stim.draw()
                 self.win.flip()
                 keys = event.waitKeys(keyList=[self.trigger_key, self.quit_key])

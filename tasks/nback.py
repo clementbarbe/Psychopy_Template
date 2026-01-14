@@ -219,7 +219,7 @@ class NBack:
         event.waitKeys()
 
     def wait_for_trigger(self):
-        self.instr_text.text = f"Waiting for MRI Trigger ('{self.keys['trigger']}')"
+        self.instr_text.text = f"En attente du trigger scanner ('t')"
         self.instr_text.draw()
         self.win.flip()
         event.waitKeys(keyList=[self.keys['trigger']])

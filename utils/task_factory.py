@@ -10,7 +10,10 @@ def create_task(config, win):
         'nom': config['nom'],
         'enregistrer': config['enregistrer'],
         'screenid': config['screenid'],
-        #'parport_actif': config['parport_actif']
+        'parport_actif': config['parport_actif'],
+        'mode': config['mode'],
+        'session': config['session'], 
+
     }
 
     task_config = config['tache']
@@ -19,25 +22,19 @@ def create_task(config, win):
         return NBack(
             **base_kwargs,
             N=config['N'],
-            n_trials=config['n_trials'],
-            isi=config['isi'],
-            stim_dur=config['stim_dur']
+            n_trials=config['n_trials']
         )
     
     elif task_config == 'Flanker':
         return Flanker(
             **base_kwargs,
             n_trials=config['n_trials'],
-            stim_dur=config['stim_dur'],
-            isi=config['isi']
         )
     
     elif task_config == 'Stroop':
         return Stroop(
             **base_kwargs,
             n_trials=config['n_trials'],      
-            session=config['session'],        
-            mode=config['mode'],
             n_choices=config['n_choices'],
             go_nogo=config['go_nogo']
         )
@@ -48,20 +45,15 @@ def create_task(config, win):
             n_trials_base=config['n_trials_base'],
             n_trials_block=config['n_trials_block'],
             n_trials_training=config['n_trials_training'],
-            session=config['session'],
-            mode=config['mode'],
             run_type=config['run_type']            
         )
     
     elif task_config == 'DoorReward':
         return DoorReward(
-            **base_kwargs,
-            session=config['session'],        
+            **base_kwargs, 
             n_trials=config['n_trials'],          
             reward_probability=config['reward_prob'], 
-            mode=config['mode'],
-            eyetracker_actif=config['eyetracker_actif'],
-            parport_actif=config['parport_actif']
+            
         )
     else:
         print("Tâche inconnue.")
