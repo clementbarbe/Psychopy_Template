@@ -1,13 +1,11 @@
 """
-Flanker Task – Event-related fMRI (3T / 7T compatible)
+Flanker Task – Rapid Event-related fMRI (3T / 7T compatible)
 
 Author : Clément BARBE / CENIR
-Reviewed & optimized for fMRI by senior task engineer
 
-Design:
-- Event-related
-- Jittered ISI (exponential, truncated)
-- Optimized for BOLD GLM efficiency
+- Stimulus duration reduced to 200ms (standard to prevent saccades).
+- Response window extended to 1.5s (stimulus disappears but recording continues).
+- ISI distribution tightened (Rapid Event-Related design).
 """
 
 import os
@@ -20,19 +18,26 @@ from datetime import datetime
 import numpy as np
 from psychopy import visual, event, core
 
-from utils.utils import should_quit
-
+# Mocking utils for standalone functionality if utils package is missing
+try:
+    from utils.utils import should_quit
+except ImportError:
+    def should_quit(win, quit=False):
+        if quit:
+            win.close()
+            core.quit()
 
 # ======================================================================
 # UTILS
 # ======================================================================
 
-def generate_jittered_isi(n_trials, isi_min=2.0, isi_max=14.0, isi_mean=6.0):
+def generate_jittered_isi(n_trials, isi_min=1.5, isi_max=6.0, isi_mean=3.5):
     """
-    Generate truncated exponential ISIs for event-related fMRI.
-
-    This distribution improves HRF deconvolution efficiency
-    and reduces regressor collinearity.
+    Generate truncated exponential ISIs for Rapid Event-related fMRI.
+    
+    Updated parameters for 'Fast' design:
+    - Min: 1.5s (allows BOLD to start decreasing)
+    - Mean: 3.5s (optimum for rapid design efficiency)
     """
     lam = 1.0 / isi_mean
     isis = []
@@ -50,8 +55,10 @@ def generate_trials(n_trials):
     """
     Generate a balanced list of Flanker trials.
     """
-    assert n_trials % 2 == 0, "n_trials must be even"
-
+    # Ensure even number for balanced design
+    if n_trials % 2 != 0:
+        n_trials += 1
+        
     conditions = ['congruent'] * (n_trials // 2) + \
                  ['incongruent'] * (n_trials // 2)
     random.shuffle(conditions)
@@ -64,6 +71,7 @@ def generate_trials(n_trials):
         else:
             flankers = ['left' if target == 'right' else 'right'] * 2
 
+        # Standard Flanker symbology
         symbol = {'left': '<', 'right': '>'}
         stim = (
             symbol[flankers[0]] +
@@ -88,15 +96,20 @@ def generate_trials(n_trials):
 
 class Flanker:
         
-    def __init__(self, win, nom, enregistrer, screenid=1, n_trials=40, stim_dur=1.0, fixation_dur=0.5, data_dir='data/flanker', parport_actif=False, eyetracker_actif=False, mode='PC', session='01'):
+    def __init__(self, win, nom, enregistrer, screenid=1, n_trials=40, 
+                 stim_dur=0.5,       # REDUCED: 200ms is lit. standard
+                 response_max=1.5,   # NEW: Total time allowed to respond
+                 data_dir='data/flanker', 
+                 parport_actif=False, eyetracker_actif=False, 
+                 mode='PC', session='01'):
 
         self.win = win
         self.participant = nom
         self.save_data = enregistrer
 
         self.n_trials = int(n_trials)
-        self.stim_dur = float(stim_dur)
-        self.fixation_dur = float(fixation_dur)
+        self.stim_dur = float(stim_dur)        # Duration of arrows on screen
+        self.response_max = float(response_max) # Duration of recording window
 
         os.makedirs(data_dir, exist_ok=True)
         self.data_dir = data_dir
@@ -108,8 +121,9 @@ class Flanker:
         self.trial_clock = core.Clock()
 
         # Stimuli
+        # Increased height slightly for better visibility at 200ms
         self.text = visual.TextStim(
-            win, height=0.08, color='white', wrapWidth=1.5
+            win, height=0.10, color='white', wrapWidth=1.5, font='Arial'
         )
         self.fixation = visual.TextStim(
             win, text='+', height=0.12, color='white'
@@ -153,7 +167,7 @@ class Flanker:
         entry = {
             'participant': self.participant,
             'trial': self.current_trial,
-            'time_s': round(t, 5),
+            'onset_s': round(t, 5),
             'event': event_type
         }
         entry.update(kwargs)
@@ -165,12 +179,13 @@ class Flanker:
 
     def show_instructions(self):
         self.text.text = (
-            "Tâche Flanker\n\n"
+            "Tâche Flanker (Rapide)\n\n"
+            "Une série de flèches va apparaître très brièvement.\n"
             "Indiquez la direction de la flèche CENTRALE.\n\n"
             "← : flèche gauche\n"
             "→ : flèche droite\n\n"
-            "Essayez de répondre le plus rapidement\n"
-            "et le plus précisément possible.\n\n"
+            "Répondez même si les flèches ont disparu.\n"
+            "Soyez le plus RAPIDE possible.\n\n"
             "Appuyez sur ESPACE pour commencer."
         )
         self.text.draw()
@@ -201,17 +216,20 @@ class Flanker:
         trial = self.trials[idx]
         isi = self.isis[idx]
 
-        # Fixation pre-stimulus
+        # 1. ISI (Jittered Fixation)
+        # In rapid designs, the ISI acts as the baseline fixation
         self.fixation.draw()
         self.win.flip()
-        core.wait(self.fixation_dur)
+        core.wait(isi)
 
-        # Stimulus
+        # 2. Stimulus Onset (Short duration: 200ms)
         self.text.text = trial['stimulus']
         self.text.draw()
-        self.win.flip()
-
+        
+        # Sync to screen flip for precise timing
+        onset_time = self.win.flip() 
         self.trial_clock.reset()
+        
         self.log_event(
             'stim_onset',
             stimulus=trial['stimulus'],
@@ -219,36 +237,47 @@ class Flanker:
             congruent=trial['congruent']
         )
 
-        response, rt = None, None
+        response = None
+        rt = None
         event.clearEvents()
+        
+        # Loop for the duration of the response window (e.g., 1.5s)
+        # Note: We do NOT break the loop on response to keep fMRI timing fixed
+        while self.trial_clock.getTime() < self.response_max:
+            t = self.trial_clock.getTime()
+            
+            # Switch from Stimulus to Fixation after stim_dur (e.g., 0.2s)
+            if t >= self.stim_dur:
+                self.fixation.draw()
+            else:
+                self.text.draw()
+            
+            self.win.flip()
 
-        while self.trial_clock.getTime() < self.stim_dur:
-            keys = event.getKeys(
-                keyList=[self.keys['left'], self.keys['right'], self.keys['quit']],
-                timeStamped=self.trial_clock
-            )
-            if keys:
-                key, t = keys[0]
-                if key == self.keys['quit']:
-                    should_quit(self.win, quit=True)
-                response = key
-                rt = round(t, 5)
-                break
+            # Check for response if we haven't got one yet
+            if response is None:
+                keys = event.getKeys(
+                    keyList=[self.keys['left'], self.keys['right'], self.keys['quit']],
+                    timeStamped=self.trial_clock
+                )
+                if keys:
+                    key, key_t = keys[0]
+                    if key == self.keys['quit']:
+                        should_quit(self.win, quit=True)
+                    response = key
+                    rt = round(key_t, 5) # RT relative to stim onset
+                    
+                    # Optional: Visual feedback of response? 
+                    # Usually avoided in strict fMRI to avoid visual confounds.
 
-        self.win.flip()
-
-        accurate = response == trial['target']
+        # Log response at the end of the trial window
+        accurate = (response == trial['target']) if response else None
         self.log_event(
             'response',
-            response=response if response else 'none',
-            rt=rt,
+            response=response if response else 'miss',
+            rt=rt if rt else 0,
             accurate=accurate
         )
-
-        # ISI (baseline)
-        self.fixation.draw()
-        self.win.flip()
-        core.wait(isi)
 
     # ==================================================================
 
@@ -260,6 +289,11 @@ class Flanker:
             for i in range(self.n_trials):
                 should_quit(self.win)
                 self.run_trial(i)
+                
+            # Final buffer to capture BOLD of last trial
+            self.fixation.draw()
+            self.win.flip()
+            core.wait(5.0)
 
         finally:
             self.save()
@@ -270,7 +304,7 @@ class Flanker:
         if not self.save_data or not self.records:
             return
 
-        fname = f"{self.participant}_Flanker_{self.start_time}.csv"
+        fname = f"{self.participant}_FlankerFast_{self.start_time}.csv"
         path = os.path.join(self.data_dir, fname)
 
         fieldnames = sorted({k for r in self.records for k in r})

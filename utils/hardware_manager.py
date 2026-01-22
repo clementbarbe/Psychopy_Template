@@ -31,19 +31,19 @@ class SafeDummyEyeTracker:
         pass
 
     def initialize(self, file_name="TEST.EDF"): 
-        logger.info(f"[Dummy ET] Virtual file defined: {file_name}")
+        logger.log(f"[Dummy ET] Virtual file defined: {file_name}")
 
     def send_message(self, msg): 
         pass 
 
     def start_recording(self): 
-        logger.info("[Dummy ET] Start Recording (Simulation)")
+        logger.log("[Dummy ET] Start Recording (Simulation)")
 
     def stop_recording(self): 
         pass
 
     def close_and_transfer_data(self, local_folder="data"): 
-        logger.info(f"[Dummy ET] Data transfer simulation to {local_folder}")
+        logger.log(f"[Dummy ET] Data transfer simulation to {local_folder}")
 
 # =============================================================================
 # 2. SECURE IMPORTS (Dependency Injection)
@@ -90,7 +90,7 @@ def setup_hardware(parport_actif=False, eyetracker_actif=False, window=None):
                 logger.err(f"LPT: Init failed ({e}). Reverting to Dummy.")
                 lpt = SafeDummyParPort()
         else:
-            logger.info("LPT: Active in config but drivers missing. Using Dummy.")
+            logger.log("LPT: Active in config but drivers missing. Using Dummy.")
             lpt = SafeDummyParPort()
     else:
         # Intentionally disabled by user
@@ -113,7 +113,7 @@ def setup_hardware(parport_actif=False, eyetracker_actif=False, window=None):
                 logger.err(f"EyeTracker: Init failed ({e}). Reverting to Dummy.")
                 et = SafeDummyEyeTracker()
         else:
-            logger.info("EyeTracker: Active in config but drivers missing. Using Dummy.")
+            logger.log("EyeTracker: Active in config but drivers missing. Using Dummy.")
             et = SafeDummyEyeTracker()
     else:
         # Intentionally disabled by user
