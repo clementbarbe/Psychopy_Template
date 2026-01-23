@@ -1,74 +1,71 @@
 """
-Door Reward Task (fMRI / Behavioral)
-------------------------------------
+door_reward.py
+--------------
 Tâche de prise de décision avec récompense (Portes).
-Refactorisation basée sur le template 'TemporalJudgement'.
+Hérite de BaseTask pour bénéficier de l'infrastructure commune.
 
-Auteur : [Votre Nom / Labo]
-Date de refactorisation : Janvier 2026
+Architecture:
+    - Séparation claire des responsabilités
+    - Réutilisation maximale du code de base
+    - Logique métier isolée
+    - Gestion d'erreurs robuste
+
+Auteur : Clément BARBE / CENIR
+Date : Janvier 2026
 """
 
 import random
-import csv
-import os
-import sys
-import time
-from datetime import datetime
-
-# --- PsychoPy Imports ---
 from psychopy import visual, event, core
+from utils.base_task import BaseTask
 
-# --- Local Imports ---
-from utils.hardware_manager import setup_hardware
-from utils.utils import should_quit
-from utils.logger import get_logger
-
-class DoorReward:
+class DoorReward(BaseTask):
     """
-    Classe principale gérant la logique de l'expérience Door Reward.
+    Tâche de choix entre 3 portes avec feedback de récompense.
+    
+    Workflow:
+        1. Affichage simultané de 3 portes fermées
+        2. Choix du participant (3 touches possibles)
+        3. Ouverture de la porte choisie
+        4. Feedback : Gain (10€) ou Neutre (0€)
+        5. ITI variable
     """
 
-    def __init__(self, win, nom, session, n_trials, reward_probability, mode, 
-                 enregistrer=True, eyetracker_actif=False, parport_actif=False, **kwargs):
+    def __init__(self, win, nom, session, n_trials=40, reward_probability=0.5, 
+                 mode="fmri", enregistrer=True, eyetracker_actif=False, 
+                 parport_actif=False, **kwargs):
+        """
+        Args:
+            win: Fenêtre PsychoPy
+            nom (str): ID Participant
+            session (str): Numéro de session
+            n_trials (int): Nombre d'essais
+            reward_probability (float): Probabilité de gain (0.0 - 1.0)
+            mode (str): 'fmri' ou 'behavioral' (change le mapping des touches)
+            enregistrer (bool): Sauvegarder les données
+            eyetracker_actif (bool): Activer l'EyeTracker
+            parport_actif (bool): Activer le port parallèle
+        """
         
-        # --- Paramètres Généraux ---
-        self.win = win
-        self.nom = str(nom)
-        self.session = str(session)
+        # --- Appel au constructeur parent ---
+        super().__init__(
+            win=win, 
+            nom=nom, 
+            session=session, 
+            task_name="Door Reward",
+            folder_name="doorreward",
+            eyetracker_actif=eyetracker_actif,
+            parport_actif=parport_actif,
+            enregistrer=enregistrer,
+            et_prefix='DR'  # Préfixe pour l'EyeTracker
+        )
+
+        # --- Paramètres Spécifiques de la Tâche ---
         self.n_trials = n_trials
         self.reward_prob = reward_probability
-        self.mode = mode
-        self.enregistrer = enregistrer
-        self.eyetracker_actif = eyetracker_actif
-        self.parport_actif = parport_actif
-
-        # --- Gestion des Chemins ---
-        # On remonte d'un niveau si on est dans 'tasks/' pour trouver la racine
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        if os.path.basename(base_dir) == 'tasks':
-            self.root_dir = os.path.dirname(base_dir)
-        else:
-            self.root_dir = base_dir
-
-        self.data_dir = os.path.join(self.root_dir, 'data', 'doorreward')
-        self.img_dir = os.path.join(self.root_dir, 'image')
-        
-        if self.enregistrer and not os.path.exists(self.data_dir):
-            os.makedirs(self.data_dir)
-
-        # --- Variables de Session ---
-        self.global_records = []
+        self.mode = mode.lower()
         self.total_gain = 0
         self.current_trial_idx = 0
-        self.start_timestamp = time.strftime("%Y%m%d_%H%M%S")
-        self.task_clock = core.Clock()
 
-        # --- Logger ---
-        self.logger = get_logger()
-        # Utilisation de .log() au lieu de .info()
-        self.logger.log(f"Initialisation DoorReward : {self.nom} - Session {self.session}")
-
-        # --- Codes TTL ---
         self.codes = {
             'start_exp': 10, 
             'rest_start': 20, 
@@ -81,68 +78,106 @@ class DoorReward:
             'timeout': 99
         }
 
-        # --- Configuration des Touches ---
-        # Format unifié pour FMRI et Comportemental
+        # --- Configuration du Mapping des Touches ---
         if self.mode == "fmri":
-            self.keys = {'choices': ['b', 'y', 'g'], 'trigger': 't', 'quit': ['escape', 'q']}
-            self.choice_map = {'b': 0, 'y': 1, 'g': 2} # Mapping touche -> index porte
+            self.keys_choices = ['b', 'y', 'g']
+            self.choice_map = {'b': 0, 'y': 1, 'g': 2}  # Index des portes (G, C, D)
         else:
-            self.keys = {'choices': ['a', 'z', 'e'], 'trigger': 't', 'quit': ['escape', 'q']}
+            self.keys_choices = ['a', 'z', 'e']
             self.choice_map = {'a': 0, 'z': 1, 'e': 2}
-
-        # --- Initialisation Hardware ---
-        self._init_hardware()
-
-        # --- Initialisation Visuels ---
-        self._setup_visuals()
-
-    def _init_hardware(self):
-        """Initialise le port parallèle et l'eyetracker via le manager."""
-        self.logger.log("Setup Hardware...")
-        self.ParPort, self.EyeTracker = setup_hardware(self.parport_actif, self.eyetracker_actif, self.win)
         
-        # Nom fichier EyeTracker (Max 8 chars : DR + 3 lettres sujet + Session)
-        # Ex: DR_ALE01
-        et_filename = f"DR_{self.nom[:3]}{self.session}"
-        self.EyeTracker.initialize(file_name=et_filename)
+        self.keys_quit = ['escape', 'q']
+        self.logger.log(f"Mapping touches ({self.mode}): {self.keys_choices}")
 
-    def _setup_visuals(self):
-        """Préchargement des stimuli visuels."""
-        # Chemins images
+        # --- Préchargement des Stimuli Visuels ---
+        self._setup_task_stimuli()
+
+        self.logger.ok(f"DoorReward initialisée : {self.n_trials} essais, p(win)={self.reward_prob}")
+
+        self.global_records = []
+
+
+
+    def _setup_task_stimuli(self):
+        """
+        Charge et prépare tous les stimuli visuels spécifiques à la tâche.
+        Utilise self.img_dir défini dans BaseTask.
+        """
+        import os
+        
+        # --- Chemins Images ---
         img_closed = os.path.join(self.img_dir, 'porte_ferme.png')
         img_open = os.path.join(self.img_dir, 'porte_ouverte.png')
 
-        # Positions : Gauche, Centre, Droite
+        # --- Positions des 3 Portes (Gauche, Centre, Droite) ---
         self.door_positions = [(-0.5, 0), (0, 0), (0.5, 0)]
-        self.doors_closed_stim = [] 
-        self.doors_open_stim = []   
         
-        # Création des sprites (Images)
+        # --- Création des Stimuli Portes ---
+        self.doors_closed_stim = []
+        self.doors_open_stim = []
+        
         for pos in self.door_positions:
+            # Portes Fermées
             self.doors_closed_stim.append(
-                visual.ImageStim(self.win, image=img_closed, pos=pos, size=(0.3, 0.6), interpolate=True)
+                visual.ImageStim(
+                    self.win, 
+                    image=img_closed, 
+                    pos=pos, 
+                    size=(0.3, 0.6), 
+                    interpolate=True
+                )
             )
+            # Portes Ouvertes
             self.doors_open_stim.append(
-                visual.ImageStim(self.win, image=img_open, pos=pos, size=(0.3, 0.6), interpolate=True)
+                visual.ImageStim(
+                    self.win, 
+                    image=img_open, 
+                    pos=pos, 
+                    size=(0.3, 0.6), 
+                    interpolate=True
+                )
             )
 
-        # Textes
-        self.feedback_stim = visual.TextStim(self.win, text="", height=0.15, bold=True)
-        self.score_stim = visual.TextStim(self.win, text="Total: 0 €", pos=(0, -0.6), height=0.08)
-        self.fixation = visual.TextStim(self.win, text='+', color='white', height=0.15)
-        self.text_instr = visual.TextStim(self.win, text="", color='white', height=0.08, wrapWidth=1.8)
+        # --- Textes Spécifiques ---
+        self.feedback_stim = visual.TextStim(
+            self.win, 
+            text="", 
+            height=0.15, 
+            bold=True,
+            font='Arial'
+        )
+        
+        self.score_stim = visual.TextStim(
+            self.win, 
+            text="Total: 0 €", 
+            pos=(0, -0.7), 
+            height=0.08,
+            color='white'
+        )
+
+        self.logger.log("Stimuli Door Reward chargés.")
 
     # =========================================================================
-    # LOGGING & DATA
+    # LOGGING & DATA MANAGEMENT (Méthodes Utilitaires)
     # =========================================================================
 
-    def log_step(self, event_type, **kwargs):
-        """Enregistre une ligne de donnée et envoie un message ET."""
+    def log_trial_event(self, event_type, **kwargs):
+        """
+        Enregistre un événement lié à un essai (wrapper amélioré).
+        
+        Args:
+            event_type (str): Type d'événement (ex: 'stim_onset', 'response')
+            **kwargs: Données additionnelles (RT, choix, gain, etc.)
+        """
         current_time = self.task_clock.getTime()
         
-        # Message EyeTracker
-        self.EyeTracker.send_message(f"TRIAL {self.current_trial_idx} {event_type}")
+        # Message EyeTracker avec contexte
+        if self.eyetracker_actif:
+            self.EyeTracker.send_message(
+                f"TRIAL_{self.current_trial_idx:03d}_{event_type.upper()}"
+            )
         
+        # Enregistrement structuré
         entry = {
             'participant': self.nom,
             'session': self.session,
@@ -151,108 +186,63 @@ class DoorReward:
             'event_type': event_type,
             'total_gain': self.total_gain
         }
-        entry.update(kwargs)
+        entry.update(kwargs)  # Fusion avec données spécifiques
+        
         self.global_records.append(entry)
 
-    def save_results(self):
-        """Sauvegarde les données en CSV."""
-        if not self.enregistrer or not self.global_records:
-            return
-
-        fname = f"{self.nom}_Reward_Sess{self.session}_{self.start_timestamp}.csv"
-        path = os.path.join(self.data_dir, fname)
-        
-        try:
-            with open(path, 'w', newline='', encoding='utf-8') as f:
-                # Récupération dynamique de toutes les clés
-                all_keys = set().union(*(r.keys() for r in self.global_records))
-                writer = csv.DictWriter(f, fieldnames=sorted(list(all_keys)))
-                writer.writeheader()
-                writer.writerows(self.global_records)
-            # Utilisation de .ok() pour le succès
-            self.logger.ok(f"Données sauvegardées : {path}")
-        except Exception as e:
-            # Utilisation de .err() pour l'erreur
-            self.logger.err(f"Erreur sauvegarde CSV : {e}")
-
     # =========================================================================
-    # UTILS & TIMING
-    # =========================================================================
-
-    def smart_wait(self, duration_s):
-        """
-        Attente active précise vérifiant les touches 'quit'.
-        Retourne False si une demande d'arrêt a été faite.
-        """
-        timer = core.CountdownTimer(duration_s)
-        while timer.getTime() > 0:
-            # 1. Vérif touches
-            keys = event.getKeys(keyList=self.keys['quit'])
-            if keys:
-                # Utilisation de .warn() pour le warning
-                self.logger.warn("Abandon détecté (Echap).")
-                should_quit(self.win)
-                return False
-            
-            # 2. Vérif Trigger (TTL) pour logging passif
-            ttl = event.getKeys(keyList=[self.keys['trigger']], timeStamped=self.task_clock)
-            for k, t in ttl:
-                self.log_step('ttl_pulse_unexpected', real_time=t)
-
-            # 3. Pause minime pour CPU
-            core.wait(0.001)
-            
-        return True
-
-    def show_resting_state(self, duration_s=10):
-        """Affiche la croix de fixation pour le repos."""
-        self.fixation.draw()
-        self.win.flip()
-        
-        self.ParPort.send_trigger(self.codes['rest_start'])
-        self.log_step('rest_start', duration=duration_s)
-        
-        if not self.smart_wait(duration_s):
-            return False
-
-        self.ParPort.send_trigger(self.codes['rest_end'])
-        self.log_step('rest_end')
-        return True
-
-    # =========================================================================
-    # CORE TRIAL LOGIC
+    # CORE TASK LOGIC (Logique Métier)
     # =========================================================================
 
     def run_trial(self, trial_num):
         """
-        Exécute un essai unique.
-        Retourne False si l'utilisateur a voulu quitter, True sinon.
+        Exécute un essai complet de la Door Reward Task.
+        
+        Phases:
+            1. Affichage des portes fermées (Onset)
+            2. Attente de la réponse (Max 4s)
+            3. Ouverture de la porte choisie
+            4. Feedback (Gain ou Neutre)
+            5. ITI (Fixation)
+        
+        Args:
+            trial_num (int): Numéro de l'essai courant
+        
+        Returns:
+            bool: True si l'essai s'est terminé normalement, False si interruption
         """
         self.current_trial_idx = trial_num
         
-        # --- 1. PORTES FERMEES (Onset) ---
-        for d in self.doors_closed_stim:
-            d.opacity = 1
-            d.draw()
+        # =====================================================================
+        # PHASE 1 : AFFICHAGE DES PORTES FERMEES
+        # =====================================================================
+        for door in self.doors_closed_stim:
+            door.opacity = 1
+            door.draw()
+        
         self.score_stim.draw()
         self.win.flip()
         
         onset_time = self.task_clock.getTime()
         self.ParPort.send_trigger(self.codes['doors_onset'])
-        self.log_step('stim_onset_doors')
+        self.log_trial_event('stim_onset_doors')
 
-        # --- 2. REPONSE (Wait for Keys) ---
+        # =====================================================================
+        # PHASE 2 : COLLECTE DE LA REPONSE
+        # =====================================================================
         event.clearEvents()
-        wait_list = self.keys['choices'] + self.keys['quit']
-        keys = event.waitKeys(maxWait=4.0, keyList=wait_list, timeStamped=self.task_clock)
+        wait_keys = self.keys_choices + self.keys_quit
         
-        choice_idx = -1
-        rt = 0
+        keys = event.waitKeys(
+            maxWait=4.0,  # Fenêtre de réponse de 4 secondes
+            keyList=wait_keys,
+            timeStamped=self.task_clock
+        )
         
+        # --- TIMEOUT (Aucune réponse) ---
         if not keys:
-            # --- TIMEOUT ---
             self.ParPort.send_trigger(self.codes['timeout'])
-            self.log_step('timeout')
+            self.log_trial_event('timeout')
             
             self.feedback_stim.text = "Trop lent !"
             self.feedback_stim.color = 'red'
@@ -260,159 +250,216 @@ class DoorReward:
             self.feedback_stim.draw()
             self.win.flip()
             
-            if not self.smart_wait(1.0): return False
-            return True # On passe au suivant
+            core.wait(1.5)
+            self.logger.warn(f"Trial {trial_num}: Timeout")
+            return True  # Passe à l'essai suivant
         
-        else:
-            # --- REPONSE VALIDEE ---
-            key_pressed, rt_abs = keys[0]
-            rt = rt_abs - onset_time
-            
-            if key_pressed in self.keys['quit']:
-                should_quit(self.win)
-                return False
+        # --- GESTION DE LA REPONSE ---
+        key_pressed, rt_abs = keys[0]
+        rt = rt_abs - onset_time
+        
+        # Vérif touche Quit
+        if key_pressed in self.keys_quit:
+            self.logger.warn("Interruption utilisateur (Echap)")
+            from utils.utils import should_quit
+            should_quit(self.win)
+            return False
+        
+        # Conversion touche -> index porte (0=Gauche, 1=Centre, 2=Droite)
+        choice_idx = self.choice_map.get(key_pressed, -1)
+        
+        if choice_idx == -1:
+            self.logger.warn(f"Touche invalide: {key_pressed}")
+            return True
+        
+        self.ParPort.send_trigger(self.codes['choice_made'])
+        self.log_trial_event('response_made', key=key_pressed, choice_idx=choice_idx, rt=rt)
 
-            # Conversion touche -> index (0, 1, 2)
-            choice_idx = self.choice_map.get(key_pressed, -1)
-            
-            self.ParPort.send_trigger(self.codes['choice_made'])
-            self.log_step('response_made', key=key_pressed, choice_idx=choice_idx, rt=rt)
-
-        # --- 3. OUVERTURE PORTE (Selection) ---
+        # =====================================================================
+        # PHASE 3 : OUVERTURE DE LA PORTE CHOISIE
+        # =====================================================================
         for i in range(3):
             if i == choice_idx:
-                self.doors_open_stim[i].draw()
+                self.doors_open_stim[i].draw()  # Porte choisie ouverte
             else:
-                self.doors_closed_stim[i].draw()
+                self.doors_closed_stim[i].draw()  # Autres fermées
+        
         self.score_stim.draw()
         self.win.flip()
         
         self.ParPort.send_trigger(self.codes['door_open'])
         
-        # Délai pré-feedback (Jitter 1s - 2s)
-        if not self.smart_wait(random.uniform(1.0, 2.0)): return False
+        # Délai pré-feedback (Jitter 1-2s pour découplage temporel)
+        core.wait(random.uniform(1.0, 2.0))
 
-        # --- 4. FEEDBACK (Calcul gain) ---
+        # =====================================================================
+        # PHASE 4 : FEEDBACK DE RECOMPENSE
+        # =====================================================================
+        # Détermination du gain (probabiliste)
         is_win = random.random() < self.reward_prob
         gain = 10 if is_win else 0
         self.total_gain += gain
         
+        # Configuration visuelle du feedback
         msg = "+ 10 €" if is_win else "0 €"
-        col = 'lime' if is_win else 'grey'
-        trig = self.codes['feedback_win'] if is_win else self.codes['feedback_neutral']
+        color = 'lime' if is_win else 'grey'
+        trigger_code = self.codes['feedback_win'] if is_win else self.codes['feedback_neutral']
 
-        self.ParPort.send_trigger(trig)
-        self.log_step('feedback_outcome', is_win=is_win, gain=gain)
+        self.ParPort.send_trigger(trigger_code)
+        self.log_trial_event('feedback_outcome', is_win=is_win, gain=gain, choice=choice_idx)
 
-        # Affichage Feedback
+        # Affichage du feedback sur la porte choisie
         for i in range(3):
             if i == choice_idx:
                 self.doors_open_stim[i].draw()
             else:
                 self.doors_closed_stim[i].draw()
-                
+        
         self.feedback_stim.text = msg
-        self.feedback_stim.color = col
-        # Position du texte sur la porte choisie
-        self.feedback_stim.pos = (self.door_positions[choice_idx][0], 0) 
+        self.feedback_stim.color = color
+        self.feedback_stim.pos = (self.door_positions[choice_idx][0], 0.3)
         self.feedback_stim.draw()
         
         self.score_stim.text = f"Total: {self.total_gain} €"
         self.score_stim.draw()
         self.win.flip()
 
-        self.logger.log(f"Trial {trial_num} | Choice: {choice_idx} | Win: {is_win} | Gain: {gain}")
+        self.logger.log(f"Trial {trial_num} | Choice: {choice_idx} | Win: {is_win} | RT: {rt:.3f}s")
 
-        # Délai Feedback (1.5s)
-        if not self.smart_wait(1.5): return False
+        # Durée affichage feedback
+        core.wait(1.5)
 
-        # --- 5. ITI (Croix de fixation) ---
+        # =====================================================================
+        # PHASE 5 : ITI (Inter-Trial Interval)
+        # =====================================================================
         self.fixation.draw()
         self.win.flip()
         
-        # Jitter ITI (1s - 2.5s)
-        if not self.smart_wait(random.uniform(1.0, 2.5)): return False
+        # ITI variable (Jitter 1-2.5s)
+        iti_duration = random.uniform(1.0, 2.5)
+        core.wait(iti_duration)
+        
+        self.log_trial_event('iti_end', iti_duration=iti_duration)
 
         return True
 
     # =========================================================================
-    # MAIN LOOP
+    # MAIN EXPERIMENTAL LOOP
     # =========================================================================
 
     def run(self):
         """
-        Boucle principale avec gestion robuste des erreurs (try/finally).
+        Boucle principale de l'expérience avec gestion robuste des erreurs.
+        
+        Workflow:
+            1. Instructions
+            2. Attente trigger IRM
+            3. Resting State initial
+            4. Boucle d'essais
+            5. Resting State final
+            6. Fin et sauvegarde
         """
         finished_naturally = False
         
         try:
-            # 1. Instructions
-            instr = (
+            # =================================================================
+            # 1. INSTRUCTIONS
+            # =================================================================
+            instructions_text = (
                 "Tâche de Récompense\n\n"
-                "3 portes vont apparaître.\n"
-                "Choisissez-en une pour trouver le trésor.\n\n"
-                f"Touches : {self.keys['choices']}\n\n"
-                "Appuyez sur 't' pour commencer..."
+                "Trois portes vont apparaître à l'écran.\n"
+                "Choisissez-en une pour trouver le trésor !\n\n"
+                f"Touches : {' / '.join(self.keys_choices)}\n"
+                "(Gauche / Centre / Droite)\n\n"
+                "Appuyez sur une touche pour voir les consignes détaillées..."
             )
-            self.text_instr.text = instr
-            self.text_instr.draw()
-            self.win.flip()
             
-            # 2. Attente Trigger
-            self.logger.log("En attente du Trigger IRM...")
-            # On lance l'ET avant le trigger pour être sûr d'avoir le début
-            self.EyeTracker.start_recording()
+            self.show_instructions(instructions_text)
             
-            event.waitKeys(keyList=[self.keys['trigger']])
+            # Instructions détaillées (2e écran)
+            detailed_instr = (
+                "CONSIGNES DETAILLEES\n\n"
+                "• Chaque porte peut contenir un trésor de 10€ ou rien (0€).\n"
+                "• Vous avez 4 secondes pour choisir une porte.\n"
+                "• Si vous êtes trop lent, l'essai est perdu.\n"
+                "• Essayez de maximiser vos gains !\n\n"
+                f"Nombre d'essais : {self.n_trials}\n\n"
+                "Appuyez sur 't' (trigger IRM) pour commencer..."
+            )
             
-            # Reset Horloge & Marqueurs
-            self.task_clock.reset()
-            self.ParPort.send_trigger(self.codes['start_exp'])
-            self.EyeTracker.send_message("START_EXP")
-            self.log_step('experiment_start')
-            
-            self.logger.ok("Trigger reçu. Start !")
+            self.show_instructions(detailed_instr)
 
-            # 3. Repos Initial (stabilisation signal BOLD)
-            if not self.show_resting_state(duration_s=5.0):
-                raise KeyboardInterrupt # Sortie propre si annulé
+            # =================================================================
+            # 2. ATTENTE TRIGGER IRM (Utilise la méthode de BaseTask)
+            # =================================================================
+            self.wait_for_trigger()
 
-            # 4. Boucle d'essais
-            for i in range(1, self.n_trials + 1):
-                continue_exp = self.run_trial(i)
+            # =================================================================
+            # 3. RESTING STATE INITIAL (Stabilisation BOLD)
+            # =================================================================
+            self.show_resting_state(duration_s=5.0, 
+                                   code_start_key='rest_start', 
+                                   code_end_key='rest_end')
+
+            # =================================================================
+            # 4. BOUCLE D'ESSAIS
+            # =================================================================
+            for trial_num in range(1, self.n_trials + 1):
+                continue_exp = self.run_trial(trial_num)
+                
                 if not continue_exp:
-                    raise KeyboardInterrupt
-            
-            # 5. Repos Final
+                    raise KeyboardInterrupt  # Interruption propre
+
+            # =================================================================
+            # 5. RESTING STATE FINAL
+            # =================================================================
             self.show_resting_state(duration_s=5.0)
             
+            # =================================================================
+            # 6. ECRAN DE FIN
+            # =================================================================
+            end_message = (
+                f"Fin de l'expérience !\n\n"
+                f"Gains totaux : {self.total_gain} €\n\n"
+                "Merci pour votre participation."
+            )
+            
+            self.show_instructions(end_message)
+            core.wait(3.0)
+            
             finished_naturally = True
+            self.logger.ok(f"Expérience terminée. Gains: {self.total_gain}€")
 
         except (KeyboardInterrupt, SystemExit):
-            self.logger.warn("Interruption manuelle (Echap) ou fin prématurée.")
+            self.logger.warn("Interruption manuelle de l'expérience.")
         
         except Exception as e:
-            # Utilisation de .err() pour l'erreur critique
-            self.logger.err(f"ERREUR CRITIQUE PENDANT LA TACHE : {e}")
-            raise e # On relève l'erreur pour le debug, mais le finally s'exécutera
+            self.logger.err(f"ERREUR CRITIQUE : {e}")
+            import traceback
+            traceback.print_exc()
+            raise
             
         finally:
-            # --- BLOC DE SECURITE ---
-            # S'exécute TOUJOURS, même en cas de crash
-            self.logger.log("Fermeture et sauvegarde...")
+            # =================================================================
+            # BLOC DE SECURITE (S'exécute TOUJOURS)
+            # =================================================================
+            self.logger.log("Nettoyage et sauvegarde...")
             
             # 1. Arrêt EyeTracker
-            self.EyeTracker.stop_recording()
-            self.EyeTracker.send_message("END_EXP")
-            self.EyeTracker.close_and_transfer_data(self.data_dir)
+            if self.eyetracker_actif:
+                self.EyeTracker.stop_recording()
+                self.EyeTracker.send_message("END_EXP")
+                self.EyeTracker.close_and_transfer_data(self.data_dir)
             
-            # 2. Sauvegarde CSV
-            self.save_results()
+            # 2. Sauvegarde des données (utilise la méthode de BaseTask)
+            self.save_data(
+                data_list=self.global_records,
+                filename_suffix=""  # Pas de suffixe additionnel
+            )
             
-            # 3. Écran de fin (si fini naturellement)
+            # 3. Message final
             if finished_naturally:
-                end_msg = f"Fin de l'expérience.\nGains totaux : {self.total_gain} €"
-                self.text_instr.text = end_msg
-                self.text_instr.draw()
-                self.win.flip()
-                core.wait(3.0)
+                self.logger.ok("Expérience terminée avec succès.")
+            else:
+                self.logger.warn("Expérience terminée prématurément.")
+
