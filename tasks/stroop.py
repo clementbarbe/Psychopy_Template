@@ -12,6 +12,7 @@ import random
 import sys
 import os
 import gc
+import glob
 
 # Astuce pour importer utils depuis le sous-dossier tasks/
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,6 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from psychopy import visual, event, core
 from utils.base_task import BaseTask
 from utils.utils import should_quit
+from tasks.qc.qc_stroop import qc_stroop
 
 class Stroop(BaseTask):
     """
@@ -300,3 +302,14 @@ class Stroop(BaseTask):
         finally:
             # 7. Sauvegarde (Utilise BaseTask)
             self.save_data(self.global_records)
+
+            # Astuce pour trouver le dernier fichier créé si on ne connait pas le nom exact
+            list_of_files = glob.glob(os.path.join(self.data_dir, '*.csv')) 
+            if list_of_files:
+                latest_file = max(list_of_files, key=os.path.getctime)
+                
+                # --- LANCEMENT DU QC ---
+                try:
+                    qc_stroop(latest_file)
+                except Exception as e:
+                    self.logger.warn(f"Echec génération QC: {e}")
