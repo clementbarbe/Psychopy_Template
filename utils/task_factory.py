@@ -22,7 +22,8 @@ def create_task(config, win):
         return NBack(
             **base_kwargs,
             N=config['N'],
-            n_trials=config['n_trials']
+            n_trials=config['n_trials'],
+            increm=config['increm']
         )
     
     elif task_config == 'Flanker':

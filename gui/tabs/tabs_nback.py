@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
-                             QLabel, QSpinBox, QPushButton)
+                             QLabel, QSpinBox, QPushButton, QCheckBox)
 
 class NBackTab(QWidget):
     def __init__(self, parent_menu):
@@ -35,15 +35,25 @@ class NBackTab(QWidget):
         trials_layout.addWidget(self.spin_trials)
         trials_layout.addStretch() # Pousse vers la gauche
         params_layout.addLayout(trials_layout)
+
+        # 4. Option Increment 
+        increm_layout = QHBoxLayout()
+        self.chk_increm = QCheckBox("Activer le mode incrémental")
+        self.chk_increm.setChecked(False)
+        increm_layout.addWidget(self.chk_increm)
+        increm_layout.addStretch() # Compacte à gauche
+        params_layout.addLayout(increm_layout)
+        
+        # Finalisation du groupe
+        params_group.setLayout(params_layout)
+        layout.addWidget(params_group)
         
         # 3. Bouton Lancer (Directement dans le vertical, sous les HBox)
         btn_run = QPushButton("Lancer NBack")
         btn_run.clicked.connect(self.run_task)
         params_layout.addWidget(btn_run)
+
         
-        # Finalisation du groupe
-        params_group.setLayout(params_layout)
-        layout.addWidget(params_group)
         
         # Stretch final pour coller le tout en haut de la fenêtre
         layout.addStretch()
@@ -53,5 +63,6 @@ class NBackTab(QWidget):
             'tache': 'NBack',
             'N': self.spin_n.value(),
             'n_trials': self.spin_trials.value(),
+            'increm': self.chk_increm.isChecked()
         }
         self.parent_menu.run_experiment(params)
