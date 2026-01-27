@@ -15,8 +15,13 @@ Date : Janvier 2026
 """
 
 import random
+import os
+import glob
+
 from psychopy import visual, event, core
 from utils.base_task import BaseTask
+from tasks.qc.qc_doorreward import qc_doorreward
+
 
 class DoorReward(BaseTask):
     """
@@ -462,4 +467,15 @@ class DoorReward(BaseTask):
                 self.logger.ok("Expérience terminée avec succès.")
             else:
                 self.logger.warn("Expérience terminée prématurément.")
+
+            # QC auto sur dernier csv
+            list_of_files = glob.glob(os.path.join(self.data_dir, '*.csv'))
+            if list_of_files:
+                latest_file = max(list_of_files, key=os.path.getctime)
+                try:
+                    print(f"Lancement du QC sur : {latest_file}")
+                    qc_doorreward(latest_file)
+                except Exception as e:
+                    print(f"Erreur lors du QC automatique : {e}")
+
 
